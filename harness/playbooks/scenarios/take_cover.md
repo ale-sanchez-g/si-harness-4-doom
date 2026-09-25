@@ -1,0 +1,2 @@
+- You have no weapon. Monsters throw fireballs at you from the far wall.
+- Dodge left or right whenever a fireball is flying at you; otherwise wait or move sideways.

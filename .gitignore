@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+build/
+dist/
+.env
+
+# Harness run logs
+runs/
+
+# Commercial WADs must never be committed
+wads/*
+!wads/README.md
+
+# ViZDoom writes these next to wherever it runs
+_vizdoom.ini
+_vizdoom/
+*.lmp

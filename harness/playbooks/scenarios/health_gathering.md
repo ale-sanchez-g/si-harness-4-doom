@@ -1,0 +1,2 @@
+- There are no enemies. The acid floor keeps hurting you.
+- Always pickup the closest medikit (I1). When none is listed, explore or turn to find more.

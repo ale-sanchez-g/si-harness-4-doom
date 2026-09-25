@@ -1,0 +1,77 @@
+# Doom + Ollama + LLM harness.
+#
+#   docker compose up --build          # everything (CPU)
+#   open http://localhost:8000         # watch the AI play
+#
+# GPU (NVIDIA):   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+# Host Ollama:    docker compose -f docker-compose.yml -f docker-compose.host-ollama.yml up --build doom harness
+# All settings can be changed in .env (see .env.example).
+name: doom-llm
+
+services:
+  doom:
+    build: ./server
+    image: doom-llm/server:latest
+    ports:
+      - "${DOOM_PORT:-8000}:8000"
+    environment:
+      DOOM_SCENARIO: ${DOOM_SCENARIO:-freedoom2}
+      DOOM_MAP: ${DOOM_MAP:-}
+      DOOM_SKILL: ${DOOM_SKILL:-3}
+      DOOM_RESOLUTION: ${DOOM_RESOLUTION:-640x480}
+      DOOM_PLAYBACK_FPS: ${DOOM_PLAYBACK_FPS:-35}
+      DOOM_KNOWLEDGE: ${DOOM_KNOWLEDGE:-fair}
+      DOOM_HEARING_RANGE: ${DOOM_HEARING_RANGE:-0}
+      DOOM_EPISODE_TIMEOUT: ${DOOM_EPISODE_TIMEOUT:-0}
+    volumes:
+      - ./wads:/wads:ro
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama:/root/.ollama
+    environment:
+      OLLAMA_KEEP_ALIVE: 30m
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  harness:
+    build: ./harness
+    image: doom-llm/harness:latest
+    depends_on:
+      doom:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    environment:
+      DOOM_URL: http://doom:8000
+      OLLAMA_HOST: ${HARNESS_OLLAMA_HOST:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-granite4.2:3b}
+      HARNESS_POLICY: ${HARNESS_POLICY:-llm}
+      HARNESS_PLAYBOOK: ${HARNESS_PLAYBOOK:-default}
+      HARNESS_SCENARIO: ${HARNESS_SCENARIO:-freedoom2}
+      HARNESS_MAP: ${HARNESS_MAP:-MAP01}
+      HARNESS_SKILL: ${HARNESS_SKILL:-}
+      HARNESS_EPISODES: ${HARNESS_EPISODES:-3}
+      HARNESS_MAX_STEPS: ${HARNESS_MAX_STEPS:-400}
+      HARNESS_CAMPAIGN: ${HARNESS_CAMPAIGN:-false}
+      HARNESS_TEMPERATURE: ${HARNESS_TEMPERATURE:-0.2}
+      HARNESS_REASONING: ${HARNESS_REASONING:-true}
+      HARNESS_NUM_CTX: ${HARNESS_NUM_CTX:-8192}
+    volumes:
+      # Edit the instructions on the host; no rebuild needed.
+      - ./harness/playbooks:/app/playbooks:ro
+      - ./runs:/app/runs
+    command: ["play"]
+    restart: "no"
+
+volumes:
+  ollama:

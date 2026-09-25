@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Doom Agent Viewer</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23ff5a3c'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0f1013; --panel: #17191e; --line: #262a31; --text: #e6e6ea; --muted: #8b90a0;
+    --accent: #ff5a3c; --good: #3ecf7a; --warn: #f2b233; --bad: #ff4d4d; --info: #58a6ff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; padding: 14px 16px 6px; }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: .5px; }
+  header h1 span { color: var(--accent); }
+  #episode { color: var(--muted); }
+  #badge { padding: 2px 8px; border-radius: 10px; font-size: 12px; background: var(--line); }
+  main { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 14px; padding: 8px 16px 16px; }
+  @media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted);
+              margin: 0; padding: 10px 12px; border-bottom: 1px solid var(--line); display: flex;
+              justify-content: space-between; align-items: center; }
+  #screen { width: 100%; display: block; background: #000; aspect-ratio: 4 / 3; object-fit: contain; }
+  #map { width: 100%; display: block; background: #0e0e12; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 1px; background: var(--line); }
+  .stat { background: var(--panel); padding: 8px 10px; }
+  .stat b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+  .stat small { color: var(--muted); text-transform: uppercase; font-size: 10px; letter-spacing: 1px; }
+  #thought { padding: 14px 12px; font-size: 16px; min-height: 64px; }
+  #thought .action { display: inline-block; margin-top: 6px; font-family: ui-monospace, Menlo, monospace;
+                     font-size: 13px; color: var(--info); }
+  #thought .result { display: block; margin-top: 4px; color: var(--muted); font-size: 13px; }
+  #log { max-height: 340px; overflow-y: auto; font-size: 13px; }
+  .entry { padding: 8px 12px; border-top: 1px solid var(--line); display: grid; grid-template-columns: 44px 1fr; gap: 8px; }
+  .entry .n { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .entry code { color: var(--info); }
+  .entry .r { color: var(--muted); }
+  .completed { color: var(--good) !important; } .interrupted { color: var(--warn) !important; }
+  .failed { color: var(--bad) !important; } .episode_over { color: var(--accent) !important; }
+  #events { padding: 8px 12px; font-size: 12px; color: var(--muted); min-height: 40px; }
+  #events div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  select, button { background: var(--line); color: var(--text); border: 1px solid #353a44; border-radius: 6px; padding: 3px 6px; }
+  .side { display: flex; flex-direction: column; gap: 14px; }
+  .muted { color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>DOOM <span>×</span> LLM harness</h1>
+  <span id="badge">connecting…</span>
+  <span id="episode"></span>
+</header>
+<main>
+  <div class="side">
+    <section class="panel">
+      <h2>Live view <span class="muted" id="cmd"></span></h2>
+      <img id="screen" alt="live game view" src="/api/stream.mjpg">
+      <div class="stats">
+        <div class="stat"><small>Health</small><b id="s-health">–</b></div>
+        <div class="stat"><small>Armor</small><b id="s-armor">–</b></div>
+        <div class="stat"><small>Weapon</small><b id="s-weapon">–</b></div>
+        <div class="stat"><small>Ammo</small><b id="s-ammo">–</b></div>
+        <div class="stat"><small>Kills</small><b id="s-kills">–</b></div>
+        <div class="stat"><small>Explored</small><b id="s-explored">–</b></div>
+        <div class="stat"><small>Game time</small><b id="s-time">–</b></div>
+      </div>
+    </section>
+    <section class="panel">
+      <h2>Game events</h2>
+      <div id="events"></div>
+    </section>
+  </div>
+  <div class="side">
+    <section class="panel">
+      <h2>Agent is thinking <span class="muted" id="model"></span></h2>
+      <div id="thought"><span class="muted">Waiting for the harness to connect…</span></div>
+    </section>
+    <section class="panel">
+      <h2>Map
+        <label class="muted">speed
+          <select id="speed">
+            <option value="17.5">0.5×</option><option value="35">1×</option>
+            <option value="70">2×</option><option value="0">max</option>
+          </select>
+        </label>
+      </h2>
+      <img id="map" alt="top-down map">
+    </section>
+    <section class="panel">
+      <h2>Decisions <span class="muted" id="count"></span></h2>
+      <div id="log"></div>
+    </section>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let lastSeq = 0, entries = [], lastEpisode = null;
+
+function esc(s) { return String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+function fmtArgs(args) {
+  if (!args) return "";
+  const parts = Object.entries(args).filter(([k, v]) => v !== null && v !== undefined && v !== "none");
+  return parts.length ? " " + parts.map(([k, v]) => `${k}=${v}`).join(" ") : "";
+}
+
+async function pollStatus() {
+  try {
+    const s = await (await fetch("/api/status")).json();
+    if (!s.running) { $("badge").textContent = "idle"; return; }
+    const p = s.player;
+    $("badge").textContent = s.finished ? `finished: ${s.end_reason}` : "live";
+    $("badge").style.background = s.finished ? (s.end_reason === "died" ? "var(--bad)" : "var(--good)") : "var(--line)";
+    $("episode").textContent = `${s.scenario} · ${s.map} · episode ${s.episode}`;
+    $("cmd").textContent = s.command ? `running: ${s.command}` : "";
+    $("s-health").textContent = p.health;
+    $("s-health").style.color = p.health < 30 ? "var(--bad)" : p.health < 60 ? "var(--warn)" : "var(--text)";
+    $("s-armor").textContent = p.armor;
+    $("s-weapon").textContent = p.weapon.replace("_", " ");
+    $("s-ammo").textContent = p.ammo ?? "∞";
+    $("s-kills").textContent = p.kills;
+    $("s-explored").textContent = `${Math.round(s.explored_percent)}%`;
+    $("s-time").textContent = `${s.time}s`;
+    $("events").innerHTML = s.events.slice().reverse().map(e => `<div>${esc(e.type)}: ${esc(e.text)}</div>`).join("");
+    $("speed").value = String(s.playback_fps);
+    if (lastEpisode && lastEpisode !== s.episode) { entries = []; renderLog(); }
+    lastEpisode = s.episode;
+  } catch (e) { $("badge").textContent = "server offline"; }
+}
+
+function renderLog() {
+  $("log").innerHTML = entries.slice().reverse().map(e => `
+    <div class="entry"><span class="n">#${e.step ?? e.seq}</span><div>
+      <code>${esc(e.action)}${esc(fmtArgs(e.args))}</code>
+      <span class="${esc(e.status)}">${esc(e.status || "")}</span>
+      <div>${esc(e.thought || "")}</div>
+      <div class="r">${esc(e.result || "")}</div></div></div>`).join("");
+  $("count").textContent = entries.length ? `${entries.length} steps` : "";
+}
+
+async function pollAgent() {
+  try {
+    const fresh = await (await fetch(`/api/agent/log?after=${lastSeq}`)).json();
+    if (!fresh.length) return;
+    for (const e of fresh) {
+      lastSeq = Math.max(lastSeq, e.seq);
+      if (e.episode && lastEpisode && e.episode !== lastEpisode) continue;
+      entries.push(e);
+    }
+    entries = entries.slice(-200);
+    const e = entries[entries.length - 1];
+    if (e) {
+      $("thought").innerHTML = `${esc(e.thought || "")}
+        <span class="action">→ ${esc(e.action)}${esc(fmtArgs(e.args))}</span>
+        <span class="result ${esc(e.status)}">${esc(e.result || "")}</span>`;
+      $("model").textContent = e.model ? `${e.model}${e.latency ? ` · ${e.latency.toFixed(1)}s` : ""}` : "";
+    }
+    renderLog();
+  } catch (e) { /* server restarting */ }
+}
+
+function refreshMap() {
+  const img = new Image();
+  img.onload = () => { $("map").src = img.src; setTimeout(refreshMap, 1000); };
+  img.onerror = () => setTimeout(refreshMap, 2000);
+  img.src = `/api/map.png?size=640&t=${Date.now()}`;
+}
+
+$("speed").addEventListener("change", (ev) =>
+  fetch("/api/settings", { method: "PUT", headers: { "Content-Type": "application/json" },
+                           body: JSON.stringify({ playback_fps: Number(ev.target.value) }) }));
+$("screen").addEventListener("error", () => setTimeout(() => { $("screen").src = `/api/stream.mjpg?t=${Date.now()}`; }, 2000));
+
+setInterval(pollStatus, 400);
+setInterval(pollAgent, 500);
+pollStatus(); pollAgent(); refreshMap();
+</script>
+</body>
+</html>

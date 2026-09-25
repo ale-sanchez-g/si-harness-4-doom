@@ -1,0 +1,118 @@
+{
+ "episode": {
+  "id": "fa983e1d",
+  "scenario": "basic",
+  "title": "Basic",
+  "map": "MAP01",
+  "skill": 3,
+  "tic": 24,
+  "time": 0.7,
+  "finished": false,
+  "end_reason": null,
+  "goal": "A single monster is in the room in front of you. Kill it as fast as possible.",
+  "campaign": false,
+  "commands": [
+   "attack",
+   "move",
+   "face",
+   "wait"
+  ],
+  "tips": [],
+  "explored_percent": 100.0
+ },
+ "player": {
+  "x": -384.0,
+  "y": 32.0,
+  "angle": 0.0,
+  "health": 100,
+  "armor": 0,
+  "weapon": "pistol",
+  "weapon_slot": 2,
+  "ammo": 50,
+  "weapons": [
+   {
+    "slot": 1,
+    "name": "fist",
+    "ammo": null,
+    "usable": true
+   },
+   {
+    "slot": 2,
+    "name": "pistol",
+    "ammo": 50,
+    "usable": true
+   }
+  ],
+  "ammo_by_type": {
+   "bullets": 50,
+   "shells": 0,
+   "rockets": 0,
+   "cells": 0
+  },
+  "keys": [],
+  "kills": 0,
+  "items": 0,
+  "secrets": 0,
+  "damage_dealt": 0,
+  "damage_taken": 0,
+  "attack_ready": true,
+  "dead": false
+ },
+ "enemies": [
+  {
+   "id": 0,
+   "name": "Cacodemon",
+   "distance": 395,
+   "bearing": -13.3,
+   "aimed": false,
+   "threat": 3,
+   "attack": "projectile",
+   "note": "tough floating demon with lightning balls",
+   "height": 0,
+   "screen_width": 52
+  }
+ ],
+ "items": [],
+ "known_items": [],
+ "hazards": [],
+ "projectiles": [],
+ "heard": [],
+ "walls": {
+  "front": {
+   "distance": 448,
+   "blocked_by": "wall"
+  },
+  "front_left": {
+   "distance": 320,
+   "blocked_by": "wall"
+  },
+  "left": {
+   "distance": 224,
+   "blocked_by": "wall"
+  },
+  "back_left": {
+   "distance": 68,
+   "blocked_by": "wall"
+  },
+  "back": {
+   "distance": 52,
+   "blocked_by": "wall"
+  },
+  "back_right": {
+   "distance": 68,
+   "blocked_by": "wall"
+  },
+  "right": {
+   "distance": 212,
+   "blocked_by": "wall"
+  },
+  "front_right": {
+   "distance": 296,
+   "blocked_by": "wall"
+  }
+ },
+ "exit": null,
+ "doors": [],
+ "switches": [],
+ "recent_events": []
+}
