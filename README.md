@@ -272,7 +272,7 @@ HARNESS_PLAYBOOK=small
 | Model             | Parameters | `make eval`, `small` playbook | Freedoom MAP01, every decision by the model           | Per decision in game |
 |-------------------|-----------:|------------------------------:|--------------------------------------------------------|---------------------:|
 | `granite4.2:3b`   | 3.7B       | 21/22 (`default` playbook)    | exit in 38 turns, 9 kills, 5 damage taken (`default`)   | 16.6 s               |
-| `granite4:1b-h`   | 1.5B       | **22/22**                     | exit in 43 turns, 9 kills, **no damage taken**          | 7.4 s                |
+| `granite4:1b-h`   | 1.5B       | **22/22**                     | exit in 30 turns, 8 kills, 5 damage taken               | 7.2 s                |
 | `granite4:350m-h` | 340M       | 18/22                         | exit in 4 of 4 runs (24 to 41 turns), 8-9 kills, 0-4 damage taken | **1.8 s**  |
 
 Same 4-core CPU; Q4_K_M weights for the 3B model, Q8_0 for the Nano models. No
