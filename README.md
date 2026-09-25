@@ -31,13 +31,17 @@ docker compose up --build
 Then open **http://localhost:8000** to watch.
 
 On the first run the harness downloads `granite4.2:3b` (about 2.2 GB) into the
-`ollama` volume. After that it plays 3 episodes of Freedoom MAP01 and prints
-every decision:
+`ollama` volume. Then it plays Freedoom Phase 2 from MAP01, moving on to the next
+map whenever it finds the exit (3 episodes by default), and prints every decision:
 
 ```
-T002 | llm  9.8s | attack E1          | completed: killed Zombieman (3 shots) | hp 100 ar 0 kills 1
-       thought: There is an enemy in view (E1 Zombieman), so I should attack it according to rule 3.
+T002 | llm 12.8s | attack E1          | completed: killed Zombieman (3 shots) | hp 100 ar 0 kills 1
+       thought: There is 1 enemy in view, so I must attack it according to rule 3.
+T003 | llm 13.5s | pickup I1          | interrupted: stopped on the way to the bullet clip: a Zombieman came into view | hp 100 ar 0 kills 1
 ```
+
+The first decision is slow (the model loads and reads the playbook once); after
+that Ollama reuses the cached prompt and each turn only processes a short report.
 
 | You have                   | Run                                                                              |
 |----------------------------|----------------------------------------------------------------------------------|
@@ -80,9 +84,9 @@ a laptop CPU. One turn is one HTTP call.
 Instead of pixels, every response carries a structured observation:
 
 - **enemies / items / barrels / projectiles** in view, from ViZDoom's object labels.
-  Each has a name, distance, bearing (degrees, positive = left), threat notes
-  ("throws fireballs, sidestep them"), and for items a walking distance, with
-  unreachable items marked;
+  Each has a name, distance, bearing (degrees, positive = left) and a short
+  description ("imp, throws fireballs"); items also get a walking distance, and
+  unreachable ones are marked;
 - **walls**: how far you can walk in 8 directions, and what blocks you (wall, door, step);
 - **map knowledge**: closed doors (and which key they need), unused switches, and the
   **exit** once seen. These come from the level's WAD line specials;
@@ -201,9 +205,44 @@ encoded in the defaults:
    model dodge when the rules said retreat; a hint saying "goto_exit when you are
    ready" made it decide it was not ready yet.
 
-Result on the built-in eval (11 situations, each asked twice): **21/22 (96%)**
-rule-correct decisions, median **9 s per decision on a 4-core CPU** (a GPU or
-Apple Silicon brings this well under 2 s).
+### Results so far
+
+Measured in a 4-core CPU sandbox without a GPU.
+
+**Decision quality** (`make eval`: 11 situations, each asked twice), `granite4.2:3b`:
+**21/22 (96%)** rule-correct decisions, median **9 s per decision**. A GPU or
+Apple Silicon brings this well under 2 s.
+
+**Scripted baseline** (`make bench`, 2 episodes each; the same rules without an LLM),
+to show what the server's commands make possible:
+
+| Scenario            | Success | Notes                                              |
+|---------------------|---------|----------------------------------------------------|
+| `freedoom2` MAP01   | 2/2     | finds the exit in about 40 turns, 9 kills          |
+| `basic`             | 2/2     | 2 turns                                            |
+| `my_way_home`       | 2/2     | finds the armor in the maze in 9 turns             |
+| `deadly_corridor`   | 1/2     | skill 5, as designed                               |
+| `defend_the_center` | n/a     | survival scenario: 26 kills before running dry     |
+| `defend_the_line`   | n/a     | 32 kills before being overrun                      |
+| `health_gathering`  | n/a     | still alive after 150 turns                        |
+| `take_cover`        | 0/2     | dodging needs quicker reactions than turn-based play |
+
+**Granite 4.2 3B playing Freedoom MAP01** (one full run, default playbook):
+it **reached the exit in 38 turns** with 9 kills and 100 health, taking only 5
+damage in the whole level. All 38 decisions came from the model, with no
+fallbacks and no repaired answers: 14 attacks, 13 pickups, 5 explores, 4 dodges,
+1 turn-around, then `goto_exit`. On the 4-core CPU this took 14 minutes of
+wall-clock time, almost all of it spent on the model (median 16.6 s per
+decision, while other jobs shared the CPU). A representative moment:
+
+```
+T035 | llm 16.6s | dodge right        | ... | hp 95 ar 1 kills 9
+       thought: DANGER line indicates a DoomImpBall is flying; I must dodge. HINT says 'dodge left'
+                failed twice, so try a different dodge direction.
+T036 | llm 16.5s | turn around        | completed: turned left 180 degrees | hp 95 ar 1 kills 9
+T037 | llm 15.6s | pickup I1          | completed: picked up the medikit (+25 health) | hp 100 ar 2 kills 9
+T038 | llm 14.6s | goto_exit          | episode_over: exit | hp 100 ar 3 kills 9
+```
 
 ---
 
@@ -223,7 +262,8 @@ Apple Silicon brings this well under 2 s).
 | `take_cover`               | dodge fireballs, no weapon                                     |                                    |
 
 Pick with `HARNESS_SCENARIO` / `HARNESS_MAP` in `.env`, or `--scenario/--map`.
-`HARNESS_CAMPAIGN=true` continues to the next map after an exit.
+With `HARNESS_CAMPAIGN=true` (the Docker default) an episode that reaches the exit
+is followed by the next map; a death restarts `HARNESS_MAP`.
 
 ---
 
@@ -254,7 +294,7 @@ curl -s -X POST localhost:8000/api/command -H 'content-type: application/json' \
      -d '{"command": "attack", "target_id": 121}' | jq .reason
 ```
 
-`status` is one of `completed`, `interrupted` (with the reason, e.g. `enemy spotted: DoomImp`),
+`status` is one of `completed`, `interrupted` (with the reason, e.g. `a DoomImp came into view`),
 `failed` (e.g. `no known path (blocked by a locked door...)`) or `episode_over`.
 
 ---
@@ -270,11 +310,12 @@ Everything is in `.env` (see `.env.example`). The most useful settings:
 | `HARNESS_PLAYBOOK`     | `default`        | file in `harness/playbooks/`                                      |
 | `HARNESS_SCENARIO` / `HARNESS_MAP` | `freedoom2` / `MAP01` | what to play                                       |
 | `HARNESS_EPISODES`, `HARNESS_MAX_STEPS` | `3`, `400` | how long to play                                       |
+| `HARNESS_CAMPAIGN`     | `true`           | after an exit, continue with the next map                         |
 | `HARNESS_REASONING`    | `true`           | ask for a one-sentence `Thought` before each action               |
 | `HARNESS_THINK`        | auto (off)       | Ollama's `think` flag for reasoning models                        |
 | `HARNESS_TEMPERATURE`  | `0.2`            | sampling temperature                                              |
 | `DOOM_PLAYBACK_FPS`    | `35`             | 35 = watchable real time, 0 = as fast as possible                 |
-| `DOOM_SKILL`           | `3`              | 1 (easy) to 5 (nightmare)                                         |
+| `DOOM_SKILL`           | `3`              | 1 (easy) to 5 (nightmare) for campaigns; ViZDoom scenarios keep their own |
 | `DOOM_KNOWLEDGE`       | `fair`           | `fair`: the exit is known once seen; `full`: known from the start |
 | `DOOM_HEARING_RANGE`   | `0`              | report out-of-sight monsters within this range (0 = off)          |
 
@@ -305,7 +346,8 @@ server/doom_server/   session.py (ViZDoom lifecycle, per-tic tracking), percepti
                       commands.py (macro actions), navigation.py (grid, paths,
                       exploration), wad.py (line specials), api.py, static/index.html
 harness/doom_harness/ agent.py (turn loop), actions.py (action space + schema),
-                      prompts.py, policies.py (LLM + scripted), memory.py, llm.py
+                      prompts.py, policies.py (LLM + scripted), memory.py, llm.py,
+                      evals.py (decision-quality checks), cli.py
 harness/playbooks/    the instructions: default.md + scenarios/*.md
 docker-compose*.yml   doom + ollama + harness (GPU / host-Ollama overrides)
 ```

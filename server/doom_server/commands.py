@@ -392,6 +392,9 @@ class CommandRunner:
             self.tic(**buttons)
             hist.append((self.snap.x, self.snap.y))
             if len(hist) == hist.maxlen and math.dist(hist[0], hist[-1]) < 6:
+                moved = math.hypot(self.snap.x - sx, self.snap.y - sy)
+                if moved >= 0.75 * distance:  # most of the way there: good enough
+                    return "completed", f"{label} {moved:.0f} units (then reached a wall)"
                 return "failed", f"{label} {moved:.0f} units, then got blocked"
             reason = ctx.interrupt_reason()
             if reason:
@@ -419,12 +422,19 @@ class CommandRunner:
         nav = self.s.nav
         assert nav is not None
         direction = (a.direction or "auto").lower()
-        if direction not in ("left", "right"):
-            left = nav.raycast(self.snap.x, self.snap.y, self.snap.angle + 90)[0]
-            right = nav.raycast(self.snap.x, self.snap.y, self.snap.angle - 90)[0]
-            direction = "left" if left >= right else "right"
+        room = {"left": nav.raycast(self.snap.x, self.snap.y, self.snap.angle + 90)[0],
+                "right": nav.raycast(self.snap.x, self.snap.y, self.snap.angle - 90)[0]}
+        note = ""
+        if direction not in room:
+            direction = "left" if room["left"] >= room["right"] else "right"
+        else:
+            other = "right" if direction == "left" else "left"
+            if room[direction] < 64 and room[other] > room[direction]:
+                note = f" (a wall was on the {direction})"
+                direction = other
         ctx.args.interrupt_on_enemy = False
-        return self._walk(MOVE_BUTTONS[direction], 96.0, ctx, label=f"dodged {direction}")
+        status, reason = self._walk(MOVE_BUTTONS[direction], 96.0, ctx, label=f"dodged {direction}")
+        return status, reason + note
 
     def _cmd_use(self, a: CommandArgs, ctx: _Context):
         nav = self.s.nav

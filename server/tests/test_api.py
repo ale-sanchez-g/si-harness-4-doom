@@ -156,3 +156,14 @@ def test_scenario_skill_and_weapons(client):
         else:
             obs = cmd(client, command="move", direction="forward", distance=200)["observation"]
     assert obs["player"]["kills"] >= 3
+
+
+def test_dodge_avoids_walls(client):
+    client.post("/api/episode", json={"scenario": "freedoom2", "map": "MAP01", "seed": 4})
+    # MAP01 start faces east with a wall 44 units behind (west). Face south: the wall is now on
+    # the right, so a requested right dodge must go left instead.
+    obs = cmd(client, command="turn", degrees=-90)["observation"]
+    assert obs["walls"]["right"]["distance"] < 64 < obs["walls"]["left"]["distance"]
+    res = cmd(client, command="dodge", direction="right")
+    assert "dodged left" in res["reason"] and "a wall was on the right" in res["reason"]
+    assert res["changes"]["moved"] > 48
