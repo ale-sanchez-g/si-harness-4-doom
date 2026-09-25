@@ -278,6 +278,13 @@ class NavMap:
         # No WAD info: any closed sector bordering walkable space may be a door.
         return True
 
+    def is_damaging(self, sector: int) -> bool:
+        """Acid, lava, nukage... (vanilla sector types or Boom's damage bits)."""
+        if not 0 <= sector < self.num_sectors:
+            return False
+        special = int(self.sector_special[sector])
+        return special in K.DAMAGING_SECTOR_SPECIALS or (special & 0x60) != 0
+
     def is_closed_door(self, sector: int) -> bool:
         return 0 <= sector < self.num_sectors and \
             (self.ceil_h[sector] - self.floor_h[sector]) < K.PLAYER_HEIGHT - 0.5

@@ -2,7 +2,7 @@ COMPOSE ?= docker compose
 GPU := -f docker-compose.yml -f docker-compose.gpu.yml
 HOST_OLLAMA := -f docker-compose.yml -f docker-compose.host-ollama.yml
 
-.PHONY: up gpu host-ollama down logs play scripted bench check prompt pull test
+.PHONY: up gpu host-ollama down logs play scripted bench eval check prompt pull test
 
 up:            ## Start Doom + Ollama + harness (CPU) and follow the harness
 	$(COMPOSE) up --build -d doom ollama
@@ -30,6 +30,9 @@ scripted:      ## Play with the rule-based baseline (no LLM needed)
 
 bench:         ## LLM vs scripted baseline over several scenarios
 	$(COMPOSE) run --rm harness bench --compare $(ARGS)
+
+eval:          ## Score model + playbook on fixed situations (ARGS="--playbook my_playbook")
+	$(COMPOSE) run --rm harness eval $(ARGS)
 
 check:         ## Check the Doom server, Ollama and the model
 	$(COMPOSE) run --rm harness check

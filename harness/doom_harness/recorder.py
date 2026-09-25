@@ -31,6 +31,8 @@ class RunRecorder:
             **meta,
             "episodes": len(eps),
             "exits": sum(1 for e in eps if e.get("end_reason") == "exit"),
+            # exit = level finished; completed = scenario objective reached (monster killed, armor found...)
+            "successes": sum(1 for e in eps if e.get("end_reason") in ("exit", "completed")),
             "deaths": sum(1 for e in eps if e.get("end_reason") == "died"),
             "avg_kills": round(sum(e.get("kills", 0) for e in eps) / len(eps), 2) if eps else 0,
             "avg_turns": round(sum(e.get("turns", 0) for e in eps) / len(eps), 1) if eps else 0,

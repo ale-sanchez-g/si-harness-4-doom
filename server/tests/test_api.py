@@ -129,3 +129,30 @@ def test_agent_log_roundtrip(client):
     assert later[-1]["thought"] == "hi"
     assert client.put("/api/settings", json={"playback_fps": 70}).json() == {"playback_fps": 70}
     client.put("/api/settings", json={"playback_fps": 0})
+
+
+def test_map_info_is_loaded_for_campaigns_and_scenarios(client):
+    session = client.app.state.session
+    client.post("/api/episode", json={"scenario": "my_way_home"})
+    assert session.nav.map_info is not None and session.nav.map_info.format == "udmf"
+    client.post("/api/episode", json={"scenario": "freedoom2", "map": "MAP01"})
+    assert session.nav.map_info.format == "doom"
+    assert len(session.nav.features_of("exit")) == 1
+
+
+def test_scenario_skill_and_weapons(client):
+    obs = client.post("/api/episode", json={"scenario": "deadly_corridor"}).json()
+    assert obs["episode"]["skill"] == 5  # the scenario's own difficulty is kept
+    assert [w["name"] for w in obs["player"]["weapons"]] == ["pistol"]  # no fist in this scenario
+    obs = client.post("/api/episode", json={"scenario": "deadly_corridor", "skill": 2}).json()
+    assert obs["episode"]["skill"] == 2
+    # A ChaingunGuy in a side alcove is visible but the straight shot clips the wall:
+    # attack must close in until it connects (every monster here has 1 hp).
+    for _ in range(6):
+        if obs["episode"]["finished"]:
+            break
+        if obs["enemies"]:
+            obs = cmd(client, command="attack", target_id=obs["enemies"][0]["id"], duration=3)["observation"]
+        else:
+            obs = cmd(client, command="move", direction="forward", distance=200)["observation"]
+    assert obs["player"]["kills"] >= 3

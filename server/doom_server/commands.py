@@ -96,11 +96,13 @@ class _Context:
         if self.args.interrupt_on_enemy:
             for lab in snap.labels:
                 if lab.object_category == "Monster" and lab.object_id not in self.known_enemies:
-                    return f"enemy spotted: {lab.object_name}"
+                    return f"a {lab.object_name} came into view"
         if self.args.interrupt_on_damage and not self.enemies_at_start:
+            nav = self.session.nav
+            on_acid = nav is not None and nav.is_damaging(nav.sector_at(snap.x, snap.y))
             taken = snap.vars["DAMAGE_TAKEN"] - self.start_vars["DAMAGE_TAKEN"]
-            if taken >= 8:
-                return f"took {taken:.0f} damage from something"
+            if taken >= 8 and not on_acid:  # floor damage is not an ambush
+                return f"took {taken:.0f} damage from an unseen attacker"
         return None
 
 
@@ -316,6 +318,8 @@ class CommandRunner:
         name = lab.object_name if lab is not None else tr.alive[target][0]
         tics = int(_clamp(a.duration or 2.0, 0.2, 6.0) * K.TICRATE)
         shots, lost, switched = 0, 0, None
+        misses = 0  # shots fired since we last did any damage
+        last_damage = self.snap.vars["DAMAGECOUNT"]
         if a.auto_weapon and lab is not None:
             switched = self._ensure_weapon(self._dist(lab.object_position_x, lab.object_position_y), best=True)
         for _ in range(tics):
@@ -348,13 +352,18 @@ class CommandRunner:
             if aimed and ready:
                 buttons["ATTACK"] = 1
                 shots += 1
+            if self.snap.vars["DAMAGECOUNT"] > last_damage:
+                last_damage, misses = self.snap.vars["DAMAGECOUNT"], 0
             if slot == 1 and dist > 56:  # melee: close the distance
                 buttons.update(MOVE_FORWARD=1, SPEED=1)
-            elif dist > AUTOAIM_RANGE and not is_barrel:
-                # Doom only auto-aims (vertically) within 1024 units; further away
-                # shots fly level and miss targets on other floors: walk closer.
+            elif not is_barrel and dist > 160 and (dist > AUTOAIM_RANGE or misses >= 2):
+                # Out of auto-aim range (Doom only aims vertically within 1024 units)
+                # or the shots hit a wall/ledge although we can see the target:
+                # walk closer while shooting to open a clear line of fire.
                 buttons.update(MOVE_FORWARD=1)
             self.tic(**buttons)
+            if "ATTACK" in buttons:
+                misses += 1 if self.snap.vars["DAMAGECOUNT"] <= last_damage else 0
         alive = is_barrel or target in tr.alive
         extra = f", switched to {switched}" if switched else ""
         where = f" ({self._dist(*tr.alive[target][1:]):.0f} away)" if (alive and not is_barrel) else ""
@@ -473,8 +482,8 @@ class CommandRunner:
             obj = self._object(a.target_id)
             if obj is None:
                 raise CommandFailed(f"object {a.target_id} not found (already picked up or dead?)")
-            goal, what = (obj.position_x, obj.position_y), obj.name
-            oid = obj.id
+            goal, oid = (obj.position_x, obj.position_y), obj.id
+            what = K.item_info(obj.name).label if obj.category in K.ITEM_CATEGORIES else obj.name
             if obj.category in K.ITEM_CATEGORIES:
                 stop = lambda: self._object(oid) is None  # noqa: E731 - picked up
                 arrive = 8.0
@@ -490,6 +499,10 @@ class CommandRunner:
             return "completed", f"picked up the {what}"
         if status == "completed" and stop is not None:
             return "failed", f"reached the spot but could not pick up the {what} (not needed or out of reach)"
+        if status == "interrupted":
+            return status, f"stopped on the way to the {what}: {reason}"
+        if status == "failed":
+            return status, f"could not reach the {what}: {reason}"
         return status, f"{what}: {reason}"
 
     def _cmd_goto_exit(self, a: CommandArgs, ctx: _Context):

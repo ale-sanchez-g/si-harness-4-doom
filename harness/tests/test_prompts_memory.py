@@ -15,7 +15,7 @@ def test_where_phrasing():
 
 def test_system_prompt_fills_every_placeholder(obs_enemy, obs_basic):
     playbook = load_playbook(HarnessConfig().playbook_path())
-    assert playbook.reminder.startswith("Rules in order")
+    assert "Rules in order" in playbook.reminder and "NOW" in playbook.reminder
     text = system_prompt(playbook, obs_enemy)
     assert "TURN REMINDER" not in text
     for placeholder in ("{goal}", "{actions}", "{answer_format}", "{scenario_notes}"):
@@ -32,9 +32,11 @@ def test_situation_report_contents(obs_enemy):
     memory.add(StepRecord(1, "explore", "none", "interrupted", "enemy spotted: Zombieman", moved=300))
     text = situation_report(TurnView(obs_enemy), memory, turn=2)
     assert text.startswith("TURN 2 |")
-    assert "E1 Zombieman" in text
-    assert "I1 bullet clip" in text
+    assert "E1 Zombieman" in text and "ENEMIES IN VIEW: 1 (attack them)" in text
+    assert "I1 bullet clip" in text and "USEFUL ITEMS: 2 (" in text
     assert "T1 explore -> interrupted: enemy spotted: Zombieman" in text
+    # history comes before the current state, which starts with NOW:
+    assert text.index("YOUR LAST TURNS") < text.index("NOW:") < text.index("ENEMIES IN VIEW: 1")
     assert "Available actions now: attack, pickup, explore" in text
     assert "+map01" not in text  # level title banner filtered out
 
@@ -101,3 +103,11 @@ def test_futile_attack_hint(make_obs):
     assert any("did no damage" in h for h in m.hints(make_obs()))
     m.add(StepRecord(4, "attack", "E1", "completed", "fired 2 shots", damage_dealt=15))
     assert not any("did no damage" in h for h in m.hints(make_obs()))
+
+
+def test_damaging_floor_hint_replaces_turn_around(make_obs, obs_start):
+    m = Memory()
+    m.add(StepRecord(1, "explore", "none", "completed", "explored", damage_taken=10))
+    hints = m.hints(make_obs(enemies=[], player={**obs_start["player"], "on_damaging_floor": True}))
+    assert any("damaging floor" in h for h in hints)
+    assert not any("Turn around" in h for h in hints)

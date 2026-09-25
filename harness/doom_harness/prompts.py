@@ -92,18 +92,26 @@ def system_prompt(playbook: Playbook | str, obs: dict, reasoning: bool = True,
     return text.strip()
 
 
-def situation_report(view: TurnView, memory: Memory, turn: int, history: int = 6,
+def situation_report(view: TurnView, memory: Memory, turn: int, history: int = 4,
                      reminder: str = "") -> str:
     obs = view.obs
     ep, p = obs["episode"], obs["player"]
     lines = [f"TURN {turn} | {ep['scenario']} {ep['map']} | game time {ep['time']}s"]
+    # History first, current state last: small models anchor on what they read last,
+    # and reasoning from old turns ("I already killed it") is a common failure.
+    recent = memory.recent(history)
+    if recent:
+        lines.append("YOUR LAST TURNS (the past, may be out of date):")
+        lines += [f"  {r.summary()}" for r in recent]
+    lines.append("NOW:")
 
     weapon = p["weapon"].replace("_", " ")
     if p.get("ammo") is not None:
         weapon += f" ({p['ammo']} ammo)"
     others = [w["name"].replace("_", " ") for w in p["weapons"]
               if w["usable"] and w["name"] not in (p["weapon"], "fist")]
-    you = f"YOU: health {p['health']}, armor {p['armor']}, weapon {weapon}"
+    low = " (LOW HEALTH!)" if p["health"] <= 30 else ""
+    you = f"YOU: health {p['health']}{low}, armor {p['armor']}, weapon {weapon}"
     if others:
         you += f", also carrying {', '.join(others)}"
     you += f", kills {p['kills']}"
@@ -112,7 +120,7 @@ def situation_report(view: TurnView, memory: Memory, turn: int, history: int = 6
     lines.append(you)
 
     if view.enemies:
-        lines.append("ENEMIES IN VIEW (attack them):")
+        lines.append(f"ENEMIES IN VIEW: {len(view.enemies)} (attack them)")
         for t in view.enemies:
             e = t.info
             tag = f"  {t.tag} {e['name']} - {where(e['bearing'], e['distance'])}"
@@ -131,7 +139,7 @@ def situation_report(view: TurnView, memory: Memory, turn: int, history: int = 6
             break
 
     if view.items:
-        lines.append("USEFUL ITEMS (pickup them when no enemy is in view):")
+        lines.append(f"USEFUL ITEMS: {len(view.items)} (pickup them when no enemy is in view)")
         for t in view.items:
             i = t.info
             text = f"  {t.tag} {i['label']} - {where(i['bearing'], i['path_distance'] or i['distance'])}"
@@ -167,11 +175,6 @@ def situation_report(view: TurnView, memory: Memory, turn: int, history: int = 6
               if e["type"] in ("message", "key", "secret") and not e["text"].startswith("+")]
     if events:
         lines.append("JUST HAPPENED: " + "; ".join(dict.fromkeys(events[-5:])))
-
-    recent = memory.recent(history)
-    if recent:
-        lines.append("YOUR LAST TURNS:")
-        lines += [f"  {r.summary()}" for r in recent]
 
     for hint in memory.hints(obs):
         lines.append(f"HINT: {hint}")

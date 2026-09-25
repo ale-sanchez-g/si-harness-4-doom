@@ -160,6 +160,7 @@ class DoomSession:
         self.frames = FrameHub(self.settings.jpeg_quality)
         self.agent_log: deque[dict] = deque(maxlen=500)
         self._agent_seq = 0
+        self._log_lock = threading.Lock()  # never wait for a running command to log
         self.playback_fps = self.settings.playback_fps
         self._next_frame_at = 0.0
         self.current_command: str | None = None
@@ -241,9 +242,12 @@ class DoomSession:
                 map_name = self.settings.map.upper()
             else:
                 map_name = sc.default_map
-            self.skill = int(skill if skill is not None else self.settings.skill)
             self.game.set_doom_map(map_name)
-            self.game.set_doom_skill(self.skill)
+            if skill is not None or sc.campaign:
+                self.skill = int(skill if skill is not None else self.settings.skill)
+                self.game.set_doom_skill(self.skill)
+            else:  # ViZDoom scenarios are tuned for the skill in their .cfg
+                self.skill = int(self.game.get_doom_skill())
             if seed is not None:
                 self.game.set_seed(int(seed))
             limit = timeout if timeout is not None else self.settings.episode_timeout
@@ -262,12 +266,22 @@ class DoomSession:
                 self._advance({})
             log.info("episode %s started: %s %s skill %d", self.tracker.id, sc.name, map_name, self.skill)
 
+    def _find_wad(self, path: str) -> str | None:
+        """ViZDoom may report a WAD path that does not exist as such (it resolves
+        bundled/relative names itself); look in the usual places."""
+        if not path:
+            return None
+        name = os.path.basename(path)
+        for candidate in (path, os.path.join(os.path.dirname(vzd.__file__), name),
+                          os.path.join(vzd.scenarios_path, name), os.path.join(self.settings.wad_dir, name)):
+            if os.path.isfile(candidate):
+                return candidate
+        return None
+
     def _load_map_info(self, sc: Scenario, map_name: str):
         assert self.game is not None
-        wads = [self.game.get_doom_game_path(), self.game.get_doom_scenario_path()]
-        wads = [w if os.path.isabs(w) else os.path.join(os.path.dirname(vzd.__file__), w)
-                for w in wads if w]
-        wads = [w for w in wads if os.path.exists(w)]
+        found = [self._find_wad(self.game.get_doom_game_path()), self._find_wad(self.game.get_doom_scenario_path())]
+        wads = [w for w in found if w]
         try:
             return load_map_info(wads, map_name)
         except Exception:  # never let an exotic WAD break the game
@@ -409,7 +423,7 @@ class DoomSession:
 
     # --------------------------------------------------------- agent log API
     def add_agent_log(self, entry: dict) -> dict:
-        with self.lock:
+        with self._log_lock:
             self._agent_seq += 1
             entry = {**entry, "seq": self._agent_seq, "time": time.time(),
                      "episode": self.tracker.id if self.tracker else None}

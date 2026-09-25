@@ -173,3 +173,19 @@ def test_agent_scripted_policy_needs_no_llm(tmp_path, obs_start, result_enemy):
     [result] = agent.run()
     assert result["policy"] == "scripted" and result["turns"] == 2
     assert doom.logs == []  # viewer posting disabled
+
+
+def test_eval_suite_runs_against_fake_model():
+    from doom_harness.config import HarnessConfig
+    from doom_harness.evals import CASES, run_evals
+    from doom_harness.prompts import load_playbook
+    fake = FakeOllama()
+    lines: list[str] = []
+    summary = run_evals(OllamaLLM("http://o", "granite4.2:3b", transport=fake.transport()),
+                        load_playbook(HarnessConfig().playbook_path()), out=lines.append)
+    assert summary["total"] == len(CASES) == len(fake.chats)
+    # the heuristic fake attacks/picks up/explores sensibly, but never dodges or turns
+    assert 5 <= summary["passed"] < summary["total"]
+    assert any(line.startswith("FAIL fireball incoming") for line in lines)
+    for body in fake.chats:
+        assert body["messages"][0]["role"] == "system" and "NOW:" in body["messages"][1]["content"]

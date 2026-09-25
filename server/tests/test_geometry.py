@@ -94,6 +94,15 @@ def test_locked_door_needs_key():
     assert nav.find_path((64, 128), (460, 128)) is not None
 
 
+def test_damaging_sectors():
+    sectors, info = two_rooms(door_ceiling=128.0)
+    info.sector_specials = {2: 5}  # 10% damage floor in room B
+    nav = NavMap(sectors, info)
+    assert nav.is_damaging(2) and not nav.is_damaging(0) and not nav.is_damaging(99)
+    path = nav.find_path((64, 128), (460, 128))
+    assert path is not None  # still reachable, just expensive
+
+
 def test_steps_are_directional():
     # Room B is a 40-unit high platform: you can drop down but not climb up.
     sectors, info = two_rooms(door_ceiling=128.0)

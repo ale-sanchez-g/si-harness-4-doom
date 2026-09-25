@@ -9,6 +9,7 @@ import sys
 
 from .actions import TurnView
 from .agent import Agent
+from .evals import run_evals
 from .client import DoomAPIError, DoomClient
 from .config import HarnessConfig
 from .llm import LLMError, OllamaLLM
@@ -132,6 +133,17 @@ def cmd_prompt(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_eval(args: argparse.Namespace) -> int:
+    """Score the model/playbook on fixed situations (needs Ollama, not the game)."""
+    cfg = _config(args)
+    llm = _llm(cfg)
+    llm.ensure_model(pull=cfg.auto_pull)
+    playbook = load_playbook(cfg.playbook_path())
+    print(f"[harness] evaluating {cfg.model} with playbook '{cfg.playbook}'")
+    summary = run_evals(llm, playbook, cfg.reasoning, repeat=args.repeat)
+    return 0 if summary["passed"] == summary["total"] else 1
+
+
 def cmd_bench(args: argparse.Namespace) -> int:
     base = _config(args)
     scenarios = [s.strip() for s in args.scenarios.split(",") if s.strip()]
@@ -153,7 +165,7 @@ def cmd_bench(args: argparse.Namespace) -> int:
             agent.run()
             summary = recorder.finish({"model": cfg.model if llm else None, "policy": policy, "scenario": scenario})
             rows.append(summary)
-            print(f"{policy:>8} | {scenario:<22} | exits {summary['exits']}/{summary['episodes']} "
+            print(f"{policy:>8} | {scenario:<24} | success {summary['successes']}/{summary['episodes']} "
                   f"| deaths {summary['deaths']} | avg kills {summary['avg_kills']:>5} "
                   f"| avg turns {summary['avg_turns']:>5} | llm {summary['avg_llm_latency']}s "
                   f"| fallback {summary['fallback_rate']:.0%}")
@@ -181,6 +193,11 @@ def main(argv: list[str] | None = None) -> int:
     _add_common(p)
     p.add_argument("--new", action="store_true", help="start a fresh episode first")
     p.set_defaults(func=cmd_prompt)
+
+    p = sub.add_parser("eval", help="score the model + playbook on fixed situations (no game needed)")
+    _add_common(p)
+    p.add_argument("--repeat", type=int, default=1, help="ask each situation N times")
+    p.set_defaults(func=cmd_eval)
 
     p = sub.add_parser("bench", help="compare policies/models over several scenarios")
     _add_common(p)

@@ -91,7 +91,7 @@ class OllamaLLM:
 
     def pull(self, progress: Callable[[str], None] = print) -> None:
         """Download the model through the Ollama API (streams progress)."""
-        last = ""
+        last: tuple[str, int] = ("", -1)
         try:
             with self._http.stream("POST", "/api/pull", json={"model": self.model, "stream": True},
                                    timeout=None) as resp:
@@ -103,12 +103,14 @@ class OllamaLLM:
                     if "error" in msg:
                         raise LLMError(f"pull failed: {msg['error']}")
                     status = msg.get("status", "")
+                    step = -1
+                    text = status
                     if msg.get("total"):
                         pct = 100.0 * msg.get("completed", 0) / msg["total"]
-                        status = f"{status} {pct:5.1f}%"
-                    if status != last and (not msg.get("total") or status.endswith("0%")):
-                        progress(f"[ollama] {self.model}: {status}")
-                        last = status
+                        step, text = int(pct // 10), f"{status} {pct:3.0f}%"
+                    if (status, step) != last:  # new stage, or every 10% of a download
+                        progress(f"[ollama] {self.model}: {text}")
+                        last = (status, step)
         except httpx.HTTPError as exc:
             raise LLMError(f"pull of {self.model} failed: {exc}") from exc
 

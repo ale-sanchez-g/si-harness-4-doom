@@ -39,7 +39,7 @@ def aim_tolerance(distance: float) -> float:
 def weapons_owned(v: dict[str, float]) -> list[dict]:
     out = []
     for slot, w in K.WEAPON_SLOTS.items():
-        if v.get(f"WEAPON{slot}", 0) > 0 or slot == 1:
+        if v.get(f"WEAPON{slot}", 0) > 0:  # some scenarios take even the fist away
             ammo = None if w.ammo is None else int(v.get(f"AMMO{slot}", 0))
             out.append({"slot": slot, "name": w.name, "ammo": ammo,
                         "usable": w.ammo is None or (ammo or 0) > 0})
@@ -64,6 +64,7 @@ def player_status(session: "DoomSession") -> dict:
         "kills": int(v["KILLCOUNT"]), "items": int(v["ITEMCOUNT"]), "secrets": int(v["SECRETCOUNT"]),
         "damage_dealt": int(v["DAMAGECOUNT"]), "damage_taken": int(v["DAMAGE_TAKEN"]),
         "attack_ready": bool(v["ATTACK_READY"]), "dead": bool(v["DEAD"]) or tr.end_reason == "died",
+        "on_damaging_floor": bool(session.nav and session.nav.is_damaging(session.nav.sector_at(snap.x, snap.y))),
     }
 
 

@@ -51,7 +51,7 @@ class HarnessConfig:
 
     # The instructions (the "harness" around the LLM)
     playbook: str = field(default_factory=lambda: _env("HARNESS_PLAYBOOK", "default"))
-    history: int = field(default_factory=lambda: _env_int("HARNESS_HISTORY", 6))
+    history: int = field(default_factory=lambda: _env_int("HARNESS_HISTORY", 4))
 
     # The game
     policy: str = field(default_factory=lambda: _env("HARNESS_POLICY", "llm"))  # llm | scripted

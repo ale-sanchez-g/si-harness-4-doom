@@ -85,20 +85,24 @@ class Memory:
         if self.futile_attacks():
             hints.append("Your last attacks did no damage: the target is out of reach. "
                          "Explore or pickup items instead, and attack when it comes closer.")
-        if last and last.damage_taken > 0 and not obs.get("enemies"):
+        if player.get("on_damaging_floor"):
+            hints.append("You are standing on a damaging floor (acid/lava): move off it.")
+        elif last and last.damage_taken > 0 and not obs.get("enemies"):
             hints.append("You were hurt but no enemy is in view: it is probably behind you. Turn around.")
         if any(p.get("incoming") for p in obs.get("projectiles", [])):
             hints.append("A projectile is flying at you: dodge!")
         if player.get("health", 100) <= 30:
             hints.append("Health is critical: get health items or retreat from enemies.")
-        usable = [w for w in player.get("weapons", []) if w.get("ammo") is not None and w.get("usable")]
-        if player.get("weapons") and not usable:
-            hints.append("You are out of ammo: pick up ammo or fight with your fists.")
+        weapons = player.get("weapons", [])
+        if weapons and not any(w.get("usable") and w.get("ammo") is not None for w in weapons):
+            fists = any(w.get("name") == "fist" for w in weapons)
+            hints.append("You are out of ammo: pick up ammo" + (" or fight with your fists." if fists else
+                                                                 ". You cannot attack until you find some."))
         for door in obs.get("doors", []):
             if door.get("locked"):
                 hints.append(f"A {door['key']} door is locked: find the {door['key']} key first.")
                 break
         ex = obs.get("exit")
         if ex and ex.get("path_distance") is not None and not obs.get("enemies"):
-            hints.append("The exit is known and reachable: use goto_exit when you are ready.")
+            hints.append("The exit is known and reachable: goto_exit now (rule 6).")
         return hints

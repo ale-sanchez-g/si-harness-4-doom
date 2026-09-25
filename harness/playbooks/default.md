@@ -6,13 +6,15 @@ SITUATION REPORT and choose ONE action. The game is paused while you think.
 {goal}
 
 # DECISION RULES
-Check the rules in this order and use the FIRST one that matches the report:
+Only the part of the report after "NOW:" describes the present. YOUR LAST TURNS is
+history: never use it to decide what is in view right now.
+Check the rules in this order and use the FIRST one that matches the NOW part:
 1. There is a line starting with "DANGER" -> dodge.
 2. Your health is 30 or less -> pickup a health item if one is listed, otherwise retreat.
-3. "ENEMIES IN VIEW" lists an enemy -> attack it. Use E1 unless another enemy's note says it is
+3. "ENEMIES IN VIEW" is 1 or more -> attack. Use E1 unless another enemy's note says it is
    much more dangerous. Distance does not matter: always attack when an enemy is listed.
 4. A "HINT" line tells you what to do -> do it.
-5. "USEFUL ITEMS" lists an item -> pickup I1.
+5. "USEFUL ITEMS" is 1 or more -> pickup I1.
 6. "EXIT" shows a walking distance -> goto_exit. Do not explore any more once the exit is known.
 7. None of the above -> explore.
 
@@ -33,20 +35,23 @@ Check the rules in this order and use the FIRST one that matches the report:
 {answer_format}
 
 # EXAMPLES
-Report: ENEMIES IN VIEW: E1 Zombieman - 700 away, 19 deg to your left. USEFUL ITEMS: I1 shotgun - 300 away.
-Answer: {"Thought": "Rule 3: an enemy is in view, so I attack it before taking the shotgun.", "action": "attack", "arg": "E1"}
+Report: NOW: ENEMIES IN VIEW: 1 (attack them) E1 Zombieman - 700 away, 19 deg to your left. USEFUL ITEMS: 1 I1 shotgun - 300 away.
+Answer: {"Thought": "Rule 3: one enemy is in view now, so I attack it before taking the shotgun.", "action": "attack", "arg": "E1"}
 
-Report: YOU: health 25. ENEMIES IN VIEW: none. USEFUL ITEMS: I1 medikit (+25 health) - 200 away.
+Report: YOUR LAST TURNS: T7 attack E1 -> completed: killed Zombieman. NOW: ENEMIES IN VIEW: 1 (attack them) E1 Zombieman - 800 away, straight ahead. USEFUL ITEMS: 1 I1 bullet clip - 270 away.
+Answer: {"Thought": "Rule 3: the zombie I killed is gone, but NOW shows another enemy, so I attack E1.", "action": "attack", "arg": "E1"}
+
+Report: NOW: YOU: health 25. ENEMIES IN VIEW: none. USEFUL ITEMS: 1 I1 medikit (+25 health) - 200 away.
 Answer: {"Thought": "Rule 2: my health is low and a medikit is listed.", "action": "pickup", "arg": "I1"}
 
-Report: YOU: health 100. ENEMIES IN VIEW: none. USEFUL ITEMS: I1 shotgun - 260 away. EXIT: not found yet.
+Report: NOW: YOU: health 100. ENEMIES IN VIEW: none. USEFUL ITEMS: 1 I1 shotgun - 260 away. EXIT: not found yet.
 Answer: {"Thought": "Rule 5: no enemy and an item is listed, so I take it before exploring.", "action": "pickup", "arg": "I1"}
 
-Report: ENEMIES IN VIEW: none. USEFUL ITEMS: none in view. EXIT: 600 away, 900 units walk.
+Report: NOW: ENEMIES IN VIEW: none. USEFUL ITEMS: none in view. EXIT: 600 away, 900 units walk.
 Answer: {"Thought": "Rule 6: the exit is known and reachable, so I go there.", "action": "goto_exit", "arg": "none"}
 
-Report: ENEMIES IN VIEW: none. USEFUL ITEMS: none in view. EXIT: not found yet.
+Report: NOW: ENEMIES IN VIEW: none. USEFUL ITEMS: none in view. EXIT: not found yet.
 Answer: {"Thought": "Rule 7: nothing to do here, keep exploring.", "action": "explore", "arg": "none"}
 
 # TURN REMINDER
-Rules in order: DANGER -> dodge | health 30 or less -> pickup health or retreat | enemy in view -> attack E1 | HINT -> follow it | useful item -> pickup I1 | exit with walking distance -> goto_exit | otherwise -> explore.
+Decide from the NOW part only. Rules in order: DANGER -> dodge | health 30 or less -> pickup health or retreat | ENEMIES IN VIEW 1 or more -> attack E1 | HINT -> follow it | USEFUL ITEMS 1 or more -> pickup I1 | EXIT with walking distance -> goto_exit | otherwise -> explore.

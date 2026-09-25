@@ -107,7 +107,7 @@ class TurnView:
     # ------------------------------------------------------------ availability
     def _available(self, action: Action) -> bool:
         if action.needs == "enemy":
-            return bool(self.enemies)
+            return bool(self.enemies) and bool(self.weapons)  # something must be able to fire
         if action.needs == "item":
             return bool(self.items)
         if action.needs == "exit":

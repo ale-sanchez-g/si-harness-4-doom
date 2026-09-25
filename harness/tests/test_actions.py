@@ -95,3 +95,10 @@ def test_switch_weapon_needs_two_weapons(make_obs, obs_start):
     assert "switch_weapon" in view.action_names
     r = view.resolve({"action": "switch_weapon", "arg": "bfg"})
     assert r.command == {"command": "select_weapon", "weapon": "shotgun"}
+
+
+def test_attack_requires_a_weapon_that_can_fire(make_obs, obs_start):
+    empty = dict(obs_start["player"], weapons=[{"slot": 2, "name": "pistol", "ammo": 0, "usable": False}])
+    view = TurnView(make_obs(enemies=[enemy()], player=empty))
+    assert "attack" not in view.action_names
+    assert "explore" in view.action_names

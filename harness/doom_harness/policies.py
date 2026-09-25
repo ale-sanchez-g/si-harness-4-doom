@@ -81,7 +81,7 @@ class ScriptedPolicy:
 class LLMPolicy:
     name = "llm"
 
-    def __init__(self, llm: LLM, system_prompt: str, reasoning: bool = True, history: int = 6,
+    def __init__(self, llm: LLM, system_prompt: str, reasoning: bool = True, history: int = 4,
                  attack_seconds: float = 2.0, explore_seconds: float = 5.0, retries: int = 1,
                  reminder: str = ""):
         self.llm = llm
