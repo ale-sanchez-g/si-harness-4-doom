@@ -107,11 +107,12 @@ def cmd_check(args: argparse.Namespace) -> int:
             obs = client.observation()
         except DoomAPIError:
             obs = client.new_episode(scenario=cfg.scenario)
-        view = TurnView(obs)
         playbook = load_playbook(cfg.playbook_path())
+        view = TurnView(obs, allowed=playbook.actions)
         prompt = system_prompt(playbook, obs, cfg.reasoning)
         reply = llm.chat([{"role": "system", "content": prompt},
-                          {"role": "user", "content": situation_report(view, Memory(), 1, reminder=playbook.reminder)}],
+                          {"role": "user", "content": situation_report(view, Memory(), 1, reminder=playbook.reminder,
+                                                                       facts=playbook.facts)}],
                          view.schema(cfg.reasoning))
         print(f"[ok]   test decision in {reply.latency:.1f}s ({reply.tokens_per_second:.0f} tok/s): {reply.data}")
     return 0 if ok else 1
@@ -122,12 +123,12 @@ def cmd_prompt(args: argparse.Namespace) -> int:
     cfg = _config(args)
     client = DoomClient(cfg.doom_url)
     obs = client.new_episode(scenario=cfg.scenario, map=cfg.map) if args.new else client.observation()
-    view = TurnView(obs)
     playbook = load_playbook(cfg.playbook_path())
+    view = TurnView(obs, allowed=playbook.actions)
     print("=" * 30, "SYSTEM PROMPT", "=" * 30)
     print(system_prompt(playbook, obs, cfg.reasoning))
     print("=" * 30, "SITUATION REPORT", "=" * 30)
-    print(situation_report(view, Memory(), 1, reminder=playbook.reminder))
+    print(situation_report(view, Memory(), 1, reminder=playbook.reminder, facts=playbook.facts))
     print("=" * 30, "JSON SCHEMA", "=" * 30)
     print(json.dumps(view.schema(cfg.reasoning), indent=2))
     return 0

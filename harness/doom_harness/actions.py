@@ -15,6 +15,9 @@ from dataclasses import dataclass, field
 # must sort before "action" for the model to think *before* it picks an action.
 # A capitalised "Thought" does that ("T" < "a") and stays first either way.
 REASON_KEY = "Thought"
+# Upper bound on the reasoning text (Ollama enforces maxLength while decoding), so a
+# rambling small model can never run out of tokens before it writes the action.
+THOUGHT_MAX_CHARS = 300
 
 TURN_DIRS = ["left", "right", "around"]
 MOVE_DIRS = ["forward", "backward", "left", "right"]
@@ -41,7 +44,8 @@ class Action:
     description: str
     arg: str  # enemy | item | turn | move | dodge | weapon | none
     server_command: str
-    needs: str | None = None  # enemy | item | exit | weapon
+    # Affordance: the action is only offered when it can make sense this turn.
+    needs: str | None = None  # enemy | threat | item | exit | weapon
 
 
 ACTIONS: dict[str, Action] = {a.name: a for a in [
@@ -49,8 +53,8 @@ ACTIONS: dict[str, Action] = {a.name: a for a in [
     Action("pickup", "pickup I#", "walk to item I# and collect it", "item", "goto", "item"),
     Action("explore", "explore", "walk into unexplored areas; opens doors on the way", "none", "explore"),
     Action("goto_exit", "goto_exit", "walk to the level exit and finish the level", "none", "goto_exit", "exit"),
-    Action("retreat", "retreat", "back away from enemies while facing them", "none", "retreat"),
-    Action("dodge", "dodge left|right", "quick sidestep to avoid fireballs and bullets", "dodge", "dodge"),
+    Action("retreat", "retreat", "back away from enemies while facing them", "none", "retreat", "threat"),
+    Action("dodge", "dodge left|right", "quick sidestep to avoid fireballs and bullets", "dodge", "dodge", "threat"),
     Action("turn", "turn left|right|around", "turn to look for enemies", "turn", "turn"),
     Action("move", "move forward|backward|left|right", "take a few steps", "move", "move"),
     Action("use", "use", "open the door or press the switch in front of you", "none", "use"),
@@ -80,7 +84,8 @@ class TurnView:
     """Everything the policy may choose from on this turn."""
 
     def __init__(self, obs: dict, banned_ids: set[int] | None = None,
-                 max_enemies: int = 5, max_items: int = 5):
+                 max_enemies: int = 5, max_items: int = 5, allowed: list[str] | None = None,
+                 blocked: set[str] | None = None):
         self.obs = obs
         banned = banned_ids or set()
         enemies = [Target(f"E{i + 1}", e["id"], e) for i, e in enumerate(obs.get("enemies", [])[:max_enemies])]
@@ -100,14 +105,23 @@ class TurnView:
 
         player = obs.get("player", {})
         self.weapons = [w["name"] for w in player.get("weapons", []) if w.get("usable")]
-        allowed = set(obs.get("episode", {}).get("commands", [a.server_command for a in ACTIONS.values()]))
-        self.scenario_actions = [a for a in ACTIONS.values() if a.server_command in allowed]
+        commands = set(obs.get("episode", {}).get("commands", [a.server_command for a in ACTIONS.values()]))
+        self.scenario_actions = [a for a in ACTIONS.values() if a.server_command in commands]
+        if allowed_by_playbook := [a for a in self.scenario_actions if allowed is None or a.name in allowed]:
+            self.scenario_actions = allowed_by_playbook  # the playbook's menu, if it leaves anything
         self.actions = [a for a in self.scenario_actions if self._available(a)]
+        if not self.actions:  # never leave the model without a valid choice
+            self.actions = [a for a in ACTIONS.values() if a.server_command in commands and self._available(a)]
+        # Loop breaker: an action repeated without effect is off the menu for one turn.
+        if blocked and (rest := [a for a in self.actions if a.name not in blocked]):
+            self.actions = rest
 
     # ------------------------------------------------------------ availability
     def _available(self, action: Action) -> bool:
         if action.needs == "enemy":
             return bool(self.enemies) and bool(self.weapons)  # something must be able to fire
+        if action.needs == "threat":  # nothing to flee from -> retreat/dodge would just waste the turn
+            return bool(self.obs.get("enemies")) or any(p.get("incoming") for p in self.obs.get("projectiles", []))
         if action.needs == "item":
             return bool(self.items)
         if action.needs == "exit":
@@ -149,7 +163,7 @@ class TurnView:
     def schema(self, reasoning: bool = True) -> dict:
         props: dict = {}
         if reasoning:
-            props[REASON_KEY] = {"type": "string"}
+            props[REASON_KEY] = {"type": "string", "maxLength": THOUGHT_MAX_CHARS}
         props["action"] = {"type": "string", "enum": self.action_names}
         props["arg"] = {"type": "string", "enum": self.arg_choices()}
         return {"type": "object", "properties": props, "required": list(props)}

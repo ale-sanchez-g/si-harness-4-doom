@@ -28,6 +28,11 @@ class StepRecord:
     kills: int = 0
     target_id: int | None = None
 
+    @property
+    def no_effect(self) -> bool:
+        """Nothing happened: no movement, no damage dealt, no kill, no pickup."""
+        return self.moved < 16 and self.damage_dealt == 0 and self.kills == 0 and not self.events
+
     def summary(self) -> str:
         what = self.action if self.arg in ("", "none") else f"{self.action} {self.arg}"
         text = f"T{self.turn} {what} -> {self.status}: {self.reason}"
@@ -66,6 +71,18 @@ class Memory:
             return last[1]
         return None
 
+    def repeating(self, n: int = 3) -> StepRecord | None:
+        """The same action+arg n times in a row without any effect (a small-model loop)."""
+        last = self.recent(n)
+        if len(last) == n and len({(r.action, r.arg) for r in last}) == 1 and all(r.no_effect for r in last):
+            return last[-1]
+        return None
+
+    def looping_actions(self, n: int = 4) -> set[str]:
+        """Actions to take off the menu for one turn: repeated n times with no effect."""
+        rec = self.repeating(n)
+        return {rec.action} if rec else set()
+
     def futile_attacks(self) -> bool:
         """Three attacks in a row that did no damage at all (target out of reach)."""
         last = self.recent(3)
@@ -82,6 +99,10 @@ class Memory:
         if failing:
             hints.append(f"'{failing.action} {failing.arg}'".replace(" none", "")
                          + " failed twice in a row. Do something different.")
+        loop = self.repeating(3)
+        if loop:
+            what = loop.action if loop.arg in ("", "none") else f"{loop.action} {loop.arg}"
+            hints.append(f"You did '{what}' 3 times in a row and nothing changed. Choose a different action.")
         if self.futile_attacks():
             hints.append("Your last attacks did no damage: the target is out of reach. "
                          "Explore or pickup items instead, and attack when it comes closer.")

@@ -466,29 +466,36 @@ class NavMap:
         s_cell, dist, pred = self._search(x, y)
         if s_cell is None:
             return None
+        h, w = self.shape
         frontier = self.frontier_mask().ravel()
         for (r, c) in self.blocked_cells:
-            frontier[r * self.shape[1] + c] = False
+            if 0 <= r < h and 0 <= c < w:
+                frontier[r * w + c] = False
         cand = np.nonzero(frontier & np.isfinite(dist) & (dist >= min_dist))[0]
         if cand.size == 0:
             return None
         score = dist[cand].copy()
         if angle_deg is not None:  # mild preference for what is in front of us
-            rr, cc = np.divmod(cand, self.shape[1])
+            rr, cc = np.divmod(cand, w)
             wx = self.x0 + (cc + 0.5) * self.cell
             wy = self.y0 + (rr + 0.5) * self.cell
             bearing = np.degrees(np.arctan2(wy - y, wx - x)) - angle_deg
             bearing = (bearing + 180.0) % 360.0 - 180.0
             score += np.abs(bearing) / 180.0 * 96.0
         best = int(cand[np.argmin(score)])
-        w = self.shape[1]
         return self._reconstruct(pred, s_cell[0] * w + s_cell[1], best, dist[best], (x, y))
 
     def mark_unreachable(self, x: float, y: float, radius_cells: int = 1) -> None:
         r0, c0 = self.to_cell(x, y)
         for dr in range(-radius_cells, radius_cells + 1):
             for dc in range(-radius_cells, radius_cells + 1):
-                self.blocked_cells.add((r0 + dr, c0 + dc))
+                if 0 <= r0 + dr < self.shape[0] and 0 <= c0 + dc < self.shape[1]:
+                    self.blocked_cells.add((r0 + dr, c0 + dc))
+
+    def mark_explored(self, x: float, y: float, radius_cells: int = 1) -> None:
+        """Count a spot as seen (used when we stand next to it but cannot look at it)."""
+        r0, c0 = self.to_cell(x, y)
+        self.seen[max(r0 - radius_cells, 0):r0 + radius_cells + 1, max(c0 - radius_cells, 0):c0 + radius_cells + 1] = True
 
     # ---------------------------------------------------------------- sensing
     def raycast(self, x: float, y: float, angle_deg: float, max_dist: float = 1024.0) -> tuple[float, str]:

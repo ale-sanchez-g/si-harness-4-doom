@@ -17,8 +17,12 @@ def test_attack_and_pickup_only_when_possible(make_obs):
     assert "attack" not in calm.action_names
     assert "pickup" not in calm.action_names
     assert "explore" in calm.action_names
+    # nothing to flee from: small models otherwise "retreat" from an empty room
+    assert "retreat" not in calm.action_names and "dodge" not in calm.action_names
+    fireball = {"id": 9, "name": "DoomImpBall", "distance": 120, "bearing": 0.0, "incoming": True}
+    assert "dodge" in TurnView(make_obs(enemies=[], projectiles=[fireball])).action_names
     busy = TurnView(make_obs(enemies=[enemy()], items=[item()]))
-    assert {"attack", "pickup"} <= set(busy.action_names)
+    assert {"attack", "pickup", "retreat", "dodge"} <= set(busy.action_names)
 
 
 def test_useless_and_unreachable_items_are_hidden(make_obs):
@@ -47,6 +51,7 @@ def test_schema_enums_match_view(obs_enemy):
     # Ollama sorts keys alphabetically; "Thought" must still come first.
     assert schema["required"] == ["Thought", "action", "arg"]
     assert sorted(schema["properties"]) == list(schema["properties"])
+    assert schema["properties"]["Thought"]["maxLength"] == 300  # the action can never be crowded out
     assert schema["properties"]["action"]["enum"] == view.action_names
     args = schema["properties"]["arg"]["enum"]
     assert args[0] == "none" and "E1" in args and "I1" in args and "around" in args

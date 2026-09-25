@@ -1,5 +1,7 @@
 """API tests that drive the real ViZDoom engine (headless, unthrottled)."""
 
+import math
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -167,3 +169,20 @@ def test_dodge_avoids_walls(client):
     res = cmd(client, command="dodge", direction="right")
     assert "dodged left" in res["reason"] and "a wall was on the right" in res["reason"]
     assert res["changes"]["moved"] > 48
+
+
+def test_explore_next_to_a_closed_door_opens_it(client):
+    """Regression: with unexplored space just behind a closed door, explore used to
+    'arrive' without moving and spin forever. It must open the door and move on."""
+    session = client.app.state.session
+    client.post("/api/episode", json={"scenario": "freedoom2", "map": "MAP01", "seed": 5})
+    nav = session.nav
+    doors = [f for f in nav.features_of("door") if f.sector is not None and nav.is_closed_door(f.sector)]
+    start = (session.snapshot.x, session.snapshot.y)
+    door = min(doors, key=lambda f: math.hypot(f.x - start[0], f.y - start[1]))
+    res = cmd(client, command="goto", x=door.approach[0], y=door.approach[1], interrupt_on_enemy=False)
+    assert res["status"] in ("completed", "failed"), res["reason"]
+    before = client.get("/api/status").json()["tic"]
+    res = cmd(client, command="explore", duration=3, interrupt_on_enemy=False)
+    assert res["status"] in ("completed", "interrupted", "failed")
+    assert res["tics"] > 0 and client.get("/api/status").json()["tic"] > before

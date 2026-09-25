@@ -55,11 +55,27 @@ class Playbook:
 
     template: str
     reminder: str = ""
+    # Optional front matter ("---\nactions: attack, explore\n---") limiting what the
+    # model may choose. Smaller models do better with a shorter menu.
+    actions: list[str] | None = None
+    # "facts: true" adds a pre-digested FACTS line to every report (for tiny models).
+    facts: bool = False
 
     @classmethod
     def parse(cls, text: str) -> "Playbook":
+        actions, facts = None, False
+        front = re.match(r"\A---\s*\n(.*?)\n---\s*\n", text, flags=re.S)
+        if front:
+            text = text[front.end():]
+            for line in front.group(1).splitlines():
+                key, _, value = line.partition(":")
+                key = key.strip().lower()
+                if key == "actions":
+                    actions = [a.strip() for a in value.split(",") if a.strip()]
+                elif key == "facts":
+                    facts = value.strip().lower() in ("true", "yes", "1", "on")
         parts = re.split(r"^#\s*TURN REMINDER\s*$", text, maxsplit=1, flags=re.M)
-        return cls(parts[0].strip(), parts[1].strip() if len(parts) > 1 else "")
+        return cls(parts[0].strip(), parts[1].strip() if len(parts) > 1 else "", actions, facts)
 
 
 def load_playbook(path: Path) -> Playbook:
@@ -77,7 +93,7 @@ def system_prompt(playbook: Playbook | str, obs: dict, reasoning: bool = True,
     if isinstance(playbook, str):
         playbook = Playbook.parse(playbook)
     ep = obs.get("episode", {})
-    view = TurnView(obs)
+    view = TurnView(obs, allowed=playbook.actions)
     actions = "\n".join(f"- {a.usage}: {a.description}" for a in view.scenario_actions)
     goal = ep.get("goal", "Survive and kill monsters.")
     tips = ep.get("tips") or []
@@ -92,8 +108,21 @@ def system_prompt(playbook: Playbook | str, obs: dict, reasoning: bool = True,
     return text.strip()
 
 
+def facts_line(view: TurnView, hints: list[str]) -> str:
+    """The playbook's checklist answered by the harness: small models read literal
+    values reliably but mis-derive them from prose ("an enemy is in view, so DANGER")."""
+    obs = view.obs
+    yes = {True: "yes", False: "no"}
+    danger = any(p.get("incoming") for p in obs.get("projectiles", []))
+    ex = obs.get("exit")
+    enemies = sum(1 for t in view.enemies if t.tag.startswith("E"))
+    return (f"FACTS: DANGER {yes[danger]} | LOW HEALTH {yes[obs['player']['health'] <= 30]} | "
+            f"ENEMIES {enemies} | HINT {yes[bool(hints)]} | ITEMS {len(view.items)} | "
+            f"EXIT {yes[bool(ex) and ex.get('path_distance') is not None]}")
+
+
 def situation_report(view: TurnView, memory: Memory, turn: int, history: int = 4,
-                     reminder: str = "") -> str:
+                     reminder: str = "", facts: bool = False) -> str:
     obs = view.obs
     ep, p = obs["episode"], obs["player"]
     lines = [f"TURN {turn} | {ep['scenario']} {ep['map']} | game time {ep['time']}s"]
@@ -110,8 +139,10 @@ def situation_report(view: TurnView, memory: Memory, turn: int, history: int = 4
         weapon += f" ({p['ammo']} ammo)"
     others = [w["name"].replace("_", " ") for w in p["weapons"]
               if w["usable"] and w["name"] not in (p["weapon"], "fist")]
-    low = " (LOW HEALTH!)" if p["health"] <= 30 else ""
-    you = f"YOU: health {p['health']}{low}, armor {p['armor']}, weapon {weapon}"
+    # Spell the state out: small models misread bare numbers ("health 100 is low").
+    health = p["health"]
+    status = "LOW HEALTH!" if health <= 30 else ("hurt" if health < 70 else "good")
+    you = f"YOU: health {health} ({status}), armor {p['armor']}, weapon {weapon}"
     if others:
         you += f", also carrying {', '.join(others)}"
     you += f", kills {p['kills']}"
@@ -176,9 +207,12 @@ def situation_report(view: TurnView, memory: Memory, turn: int, history: int = 4
     if events:
         lines.append("JUST HAPPENED: " + "; ".join(dict.fromkeys(events[-5:])))
 
-    for hint in memory.hints(obs):
+    hints = memory.hints(obs)
+    for hint in hints:
         lines.append(f"HINT: {hint}")
 
+    if facts:
+        lines.append(facts_line(view, hints))
     if reminder:
         lines.append(reminder)
     choices = ", ".join(view.action_names)

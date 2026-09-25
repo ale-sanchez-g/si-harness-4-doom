@@ -129,10 +129,10 @@ def run_evals(llm: LLM, playbook: Playbook, reasoning: bool = True, repeat: int 
     for case in cases or CASES:
         obs = case.observation()
         policy = LLMPolicy(llm, system_prompt(playbook, obs, reasoning), reasoning=reasoning,
-                           reminder=playbook.reminder, retries=0)
+                           reminder=playbook.reminder, facts=playbook.facts, retries=0)
         for _ in range(repeat):
             t0 = time.monotonic()
-            d = policy.decide(TurnView(obs), case.memory(), turn=8)
+            d = policy.decide(TurnView(obs, allowed=playbook.actions), case.memory(), turn=8)
             ok = d.source == "llm" and d.resolved.action in case.expect and \
                 (case.expect_arg is None or d.resolved.arg == case.expect_arg)
             r = EvalResult(case.name, ok, d.resolved.action, d.resolved.arg, d.thought,

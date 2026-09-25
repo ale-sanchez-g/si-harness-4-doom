@@ -33,6 +33,7 @@ def test_situation_report_contents(obs_enemy):
     text = situation_report(TurnView(obs_enemy), memory, turn=2)
     assert text.startswith("TURN 2 |")
     assert "E1 Zombieman" in text and "ENEMIES IN VIEW: 1 (attack them)" in text
+    assert "YOU: health 100 (good)," in text
     assert "I1 bullet clip" in text and "USEFUL ITEMS: 2 (" in text
     assert "T1 explore -> interrupted: enemy spotted: Zombieman" in text
     # history comes before the current state, which starts with NOW:
@@ -111,3 +112,58 @@ def test_damaging_floor_hint_replaces_turn_around(make_obs, obs_start):
     hints = m.hints(make_obs(enemies=[], player={**obs_start["player"], "on_damaging_floor": True}))
     assert any("damaging floor" in h for h in hints)
     assert not any("Turn around" in h for h in hints)
+
+
+def test_playbook_front_matter_restricts_actions(obs_enemy, make_obs):
+    from doom_harness.prompts import Playbook
+    pb = Playbook.parse("---\nactions: attack, explore\n---\n# ROLE\nplay {goal}\n{actions}\n# TURN REMINDER\nbe brave")
+    assert pb.actions == ["attack", "explore"] and pb.reminder == "be brave"
+    assert "actions:" not in pb.template and pb.template.startswith("# ROLE")
+    view = TurnView(obs_enemy, allowed=pb.actions)
+    assert view.action_names == ["attack", "explore"]
+    assert set(view.schema()["properties"]["action"]["enum"]) == {"attack", "explore"}
+    prompt = system_prompt(pb, obs_enemy)
+    assert "- attack E#" in prompt and "pickup" not in prompt
+    # a menu with nothing available this turn falls back to what the scenario allows
+    calm = TurnView(make_obs(enemies=[], items=[], known_items=[]), allowed=["attack", "pickup"])
+    assert "explore" in calm.action_names
+
+
+def test_small_playbook_loads():
+    cfg = HarnessConfig(playbook="small")
+    pb = load_playbook(cfg.playbook_path())
+    assert pb.actions == ["attack", "pickup", "explore", "goto_exit", "retreat", "dodge", "turn"]
+    # no TURN REMINDER on purpose: sub-1B models copy it instead of reading the FACTS line
+    assert pb.facts and pb.reminder == ""
+    assert not load_playbook(HarnessConfig().playbook_path()).facts  # default playbook: no FACTS
+
+
+def test_facts_line(make_obs, obs_start):
+    fireball = {"id": 9, "name": "DoomImpBall", "distance": 120, "bearing": 0.0, "incoming": True}
+    obs = make_obs(enemies=[enemy()], items=[item()], projectiles=[fireball],
+                   player={**obs_start["player"], "health": 20})
+    text = situation_report(TurnView(obs), Memory(), 3, facts=True)
+    assert "FACTS: DANGER yes | LOW HEALTH yes | ENEMIES 1 | HINT yes | ITEMS 1 | EXIT no" in text
+    calm = situation_report(TurnView(make_obs(enemies=[], items=[], known_items=[])), Memory(), 3, facts=True)
+    assert "FACTS: DANGER no | LOW HEALTH no | ENEMIES 0 | HINT no | ITEMS 0 | EXIT no" in calm
+    assert "FACTS:" not in situation_report(TurnView(obs), Memory(), 3)
+
+
+def test_loop_breaker(make_obs):
+    m = Memory()
+    for t in range(1, 4):
+        m.add(StepRecord(t, "turn", "around", "completed", "turned left 180 degrees"))
+    assert any("3 times in a row" in h for h in m.hints(make_obs(enemies=[])))
+    assert m.looping_actions() == set()  # hint first, one more chance
+    m.add(StepRecord(4, "turn", "around", "completed", "turned left 180 degrees"))
+    assert m.looping_actions() == {"turn"}
+    view = TurnView(make_obs(enemies=[], items=[], known_items=[]), blocked=m.looping_actions())
+    assert "turn" not in view.action_names and "explore" in view.action_names
+    # an action that does something is never a loop
+    m.add(StepRecord(5, "explore", "none", "completed", "explored", moved=400))
+    m.add(StepRecord(6, "explore", "none", "completed", "explored", moved=380))
+    m.add(StepRecord(7, "explore", "none", "completed", "explored", moved=390))
+    assert m.repeating(3) is None and m.looping_actions() == set()
+    # never block the only choice left
+    only = TurnView(make_obs(enemies=[], items=[], known_items=[]), allowed=["turn"], blocked={"turn"})
+    assert only.action_names == ["turn"]

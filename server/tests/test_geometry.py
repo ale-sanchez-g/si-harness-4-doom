@@ -163,3 +163,19 @@ def test_bearing_convention():
     assert abs(bearing_to(0, 0, 10, -100, 0)) == pytest.approx(170)
     assert aim_tolerance(100) > aim_tolerance(1000) >= 1.5
     assert math.isclose(norm_angle(-190), 170)
+
+
+def test_frontier_behind_a_door_and_marking():
+    """Standing at a closed door, the unexplored room behind it is the frontier (even
+    though it is very close); marking it explored removes it; bad marks are ignored."""
+    sectors, info = two_rooms()
+    nav = NavMap(sectors, info)
+    nav.mark_seen(240, 128)  # standing right in front of the door
+    path = nav.nearest_frontier(240, 128, angle_deg=0)
+    assert path is not None and path.door_sectors == [1]
+    gx, gy = path.points[-1]
+    assert gx > 272  # behind the door, in room B
+    nav.mark_explored(gx, gy, radius_cells=1)
+    assert not nav.frontier_mask()[nav.to_cell(gx, gy)]
+    nav.mark_unreachable(-10_000, -10_000, radius_cells=3)
+    assert all(0 <= r < nav.shape[0] and 0 <= c < nav.shape[1] for r, c in nav.blocked_cells)

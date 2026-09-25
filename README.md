@@ -52,7 +52,9 @@ that Ollama reuses the cached prompt and each turn only processes a short report
 
 More `make` targets: `play`, `eval`, `bench`, `check`, `prompt`, `logs`, `down`.
 Examples: `make play ARGS="--scenario defend_the_center --episodes 5"`, or
-set `OLLAMA_MODEL=qwen3:4b` in `.env` to try another model.
+set `OLLAMA_MODEL=qwen3:4b` in `.env` to try another model. On a slow machine,
+`OLLAMA_MODEL=granite4:1b-h` with `HARNESS_PLAYBOOK=small` plays as well at about
+twice the speed (see [Smaller models](#smaller-models)).
 
 ---
 
@@ -121,7 +123,7 @@ YOUR LAST TURNS (the past, may be out of date):
   T7 pickup I1 -> completed: picked up the bullet clip
   T8 pickup I1 -> interrupted: stopped on the way to the bullet clip: a Zombieman came into view
 NOW:
-YOU: health 100, armor 0, weapon pistol (64 ammo), kills 2
+YOU: health 100 (good), armor 0, weapon pistol (64 ammo), kills 2
 ENEMIES IN VIEW: 1 (attack them)
   E1 Zombieman - 800 away, straight ahead - weak zombie with a rifle
 USEFUL ITEMS: 2 (pickup them when no enemy is in view)
@@ -139,11 +141,18 @@ Everything after `# TURN REMINDER` in the playbook is appended to every report.
 Small models pay most attention to the end of the prompt. Scenario-specific notes
 live in `harness/playbooks/scenarios/<scenario>.md`.
 
+`harness/playbooks/small.md` is a compact variant for ~1B models: seven actions,
+and instead of prose rules to interpret, the harness ends each report with the
+answers to the rules' questions (`FACTS: DANGER no | LOW HEALTH no | ENEMIES 1 |
+HINT no | ITEMS 2 | EXIT no`). See [Smaller models](#smaller-models).
+
 ### 5. Constrained decoding, per turn
 The harness sends Ollama a **JSON schema built for this turn**. `action` is an
-enum of only the actions possible right now (no `attack` without an enemy), and
-`arg` is an enum of the current targets (`E1`, `I2`), directions and owned
-weapons. Invalid answers cannot be generated. The reply is still validated
+enum of only the actions possible right now (no `attack` without an enemy, no
+`retreat` or `dodge` without a threat), and `arg` is an enum of the current
+targets (`E1`, `I2`), directions and owned weapons. Invalid answers cannot be
+generated, and the `Thought` is capped at 300 characters so a rambling model
+cannot run out of tokens before it answers. The reply is still validated
 and repaired (a bad tag falls back to the nearest target), retried once, and
 otherwise handled by the scripted baseline.
 
@@ -151,7 +160,10 @@ otherwise handled by the scripted baseline.
 Short-term memory shows the model its last turns and adds **HINT** lines when it
 is stuck, repeating a failing action, attacking something it cannot hit, or being
 hurt by an unseen enemy. Unreachable items are hidden for a while after a failed
-pickup.
+pickup. A **loop breaker** catches the typical failure of the smallest models:
+after the same action three times in a row with no effect (no movement, damage,
+kill or pickup) a HINT says so, and on the fourth time that action is taken off
+the menu until the model does something else.
 
 ### 7. Observability
 - the viewer at `http://localhost:8000` shows the live game, the model's latest
@@ -211,7 +223,8 @@ Measured in a 4-core CPU sandbox without a GPU.
 
 **Decision quality** (`make eval`: 11 situations, each asked twice), `granite4.2:3b`:
 **21/22 (96%)** rule-correct decisions, median **9 s per decision**. A GPU or
-Apple Silicon brings this well under 2 s.
+Apple Silicon brings this well under 2 s. For 1B and 340M models, see
+[Smaller models](#smaller-models).
 
 **Scripted baseline** (`make bench`, 2 episodes each; the same rules without an LLM),
 to show what the server's commands make possible:
@@ -243,6 +256,56 @@ T036 | llm 16.5s | turn around        | completed: turned left 180 degrees | hp 
 T037 | llm 15.6s | pickup I1          | completed: picked up the medikit (+25 health) | hp 100 ar 2 kills 9
 T038 | llm 14.6s | goto_exit          | episode_over: exit | hp 100 ar 3 kills 9
 ```
+
+### Smaller models
+
+Granite 4.2 3B is the default because it copes with the full playbook. IBM's
+Granite 4.0 Nano models are much smaller and faster, and with the compact
+`small` playbook they finish MAP01 as well:
+
+```bash
+# .env
+OLLAMA_MODEL=granite4:1b-h        # or granite4:350m-h
+HARNESS_PLAYBOOK=small
+```
+
+| Model             | Parameters | `make eval`, `small` playbook | Freedoom MAP01, every decision by the model           | Per decision in game |
+|-------------------|-----------:|------------------------------:|--------------------------------------------------------|---------------------:|
+| `granite4.2:3b`   | 3.7B       | 21/22 (`default` playbook)    | exit in 38 turns, 9 kills, 5 damage taken (`default`)   | 16.6 s               |
+| `granite4:1b-h`   | 1.5B       | **22/22**                     | exit in 43 turns, 9 kills, **no damage taken**          | 7.4 s                |
+| `granite4:350m-h` | 340M       | 18/22                         | exit in 4 of 4 runs (24 to 41 turns), 8-9 kills, 0-4 damage taken | **1.8 s**  |
+
+Same 4-core CPU; Q4_K_M weights for the 3B model, Q8_0 for the Nano models. No
+fallbacks and no repaired answers in any game. A 340M run takes 75-90 s for the level.
+
+- **The 1B model plays like the 3B model at about twice the speed.** Its
+  `Thought` is a faithful checklist: `DANGER no, LOW HEALTH no, ENEMIES 1 -> attack E1`.
+- **The 340M model is four times faster again and finished every run, but it is
+  at the edge.** It fails the "low health, retreat" and "follow the HINT" cases,
+  and its `Thought` is sometimes copied text rather than reasoning. The harness
+  does much of the work: only sensible actions are on the menu and the FACTS
+  line does the perception.
+
+What it took, each step checked with `make eval`:
+
+1. **A FACTS line.** The 1B model argued "health 100 is low, retreat" and treated
+   any visible enemy as DANGER. The `small` playbook has the harness answer the
+   rules' questions (`FACTS: DANGER no | LOW HEALTH no | ENEMIES 1 | HINT no |
+   ITEMS 2 | EXIT no`) and the model copies them into its `Thought` up to the
+   first matching rule.
+2. **Fewer, sensible actions.** Seven instead of eleven, and no `retreat` or
+   `dodge` without a threat.
+3. **Labels on numbers:** `health 100 (good)`, `health 25 (LOW HEALTH!)`.
+4. **Nothing to parrot.** With a one-line rules reminder at the end of each
+   report, the 340M model copied the reminder (`ENEMIES 1+ -> attack E1`) instead
+   of reading the FACTS line: 15/22 on the eval, and 86 turns to finish MAP01,
+   31 of them spent turning around. Without the reminder: 18/22 and 24 turns.
+5. **A loop breaker** in the harness. It was essential with the reminder (the
+   86-turn run above) and never fired in the four runs without it.
+
+Testing the small models also found a server bug: `explore` next to a closed door
+with unexplored space right behind it could "arrive" without moving and loop
+forever. It now opens the door first, and gives up on spots it cannot reach.
 
 ---
 
@@ -307,7 +370,7 @@ Everything is in `.env` (see `.env.example`). The most useful settings:
 |------------------------|------------------|-------------------------------------------------------------------|
 | `OLLAMA_MODEL`         | `granite4.2:3b`  | any Ollama chat model                                             |
 | `HARNESS_POLICY`       | `llm`            | `llm` or `scripted` (baseline, no model)                          |
-| `HARNESS_PLAYBOOK`     | `default`        | file in `harness/playbooks/`                                      |
+| `HARNESS_PLAYBOOK`     | `default`        | file in `harness/playbooks/`; `small` for ~1B models              |
 | `HARNESS_SCENARIO` / `HARNESS_MAP` | `freedoom2` / `MAP01` | what to play                                       |
 | `HARNESS_EPISODES`, `HARNESS_MAX_STEPS` | `3`, `400` | how long to play                                       |
 | `HARNESS_CAMPAIGN`     | `true`           | after an exit, continue with the next map                         |
@@ -348,7 +411,7 @@ server/doom_server/   session.py (ViZDoom lifecycle, per-tic tracking), percepti
 harness/doom_harness/ agent.py (turn loop), actions.py (action space + schema),
                       prompts.py, policies.py (LLM + scripted), memory.py, llm.py,
                       evals.py (decision-quality checks), cli.py
-harness/playbooks/    the instructions: default.md + scenarios/*.md
+harness/playbooks/    the instructions: default.md, small.md (~1B models), scenarios/*.md
 docker-compose*.yml   doom + ollama + harness (GPU / host-Ollama overrides)
 ```
 
@@ -358,5 +421,6 @@ docker-compose*.yml   doom + ollama + harness (GPU / host-Ollama overrides)
   engine and the classic AI scenarios.
 - [Freedoom](https://freedoom.github.io) (BSD-3-Clause) provides the free game data
   bundled with ViZDoom. No commercial WADs are included; bring your own for `doom`/`doom2`.
-- [IBM Granite 4.2](https://ollama.com/library/granite4.2) (Apache 2.0) is the default model.
+- [IBM Granite 4.2](https://ollama.com/library/granite4.2) (Apache 2.0) is the default model;
+  the [Granite 4.0](https://ollama.com/library/granite4) Nano models (Apache 2.0) were used for the small-model tests.
 - This project: MIT, see `LICENSE`.

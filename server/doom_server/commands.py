@@ -50,6 +50,7 @@ COMMAND_SPECS: list[dict] = [
 ]
 
 AUTOAIM_RANGE = 900.0  # a bit below Doom's 1024-unit auto-aim search distance
+MAX_EXPLORE_LEGS = 40  # safety net: an explore command re-plans at most this often
 
 MOVE_BUTTONS = {"forward": "MOVE_FORWARD", "backward": "MOVE_BACKWARD",
                 "left": "MOVE_LEFT", "right": "MOVE_RIGHT"}
@@ -552,8 +553,8 @@ class CommandRunner:
         budget = int(_clamp(a.duration or 5.0, 1.0, 20.0) * K.TICRATE)
         start_pct = nav.explored_fraction()
         end_tic = self.snap.tic + budget
-        legs = 0
-        while self.snap.tic < end_tic:
+        legs = stalls = 0
+        while self.snap.tic < end_tic and legs < MAX_EXPLORE_LEGS:
             path = nav.nearest_frontier(self.snap.x, self.snap.y, self.snap.angle)
             if path is None:
                 switch = self._nearest_switch()
@@ -573,12 +574,22 @@ class CommandRunner:
             goal = path.points[-1]
             gr, gc = nav.to_cell(*goal)
             leg_end = min(end_tic, self.snap.tic + 50)
+            tic_before = self.snap.tic
             status, reason = self._follow(path, leg_end - self.snap.tic, ctx, arrive=32.0,
                                           stop=lambda: bool(nav.seen[gr, gc]) and self._dist(*goal) < 200)
             if status in ("interrupted", "failed_hard"):
                 return "interrupted" if status == "interrupted" else "failed", reason
             if status == "failed":
                 nav.mark_unreachable(*goal, radius_cells=2)
+            if self.snap.tic == tic_before:
+                # "Reached" without moving: the spot is next to us but hidden (e.g. just
+                # behind a door). Count it as explored so we never plan it again.
+                nav.mark_explored(*goal, radius_cells=1)
+                stalls += 1
+                if stalls >= 5:
+                    return "completed", "nothing more to explore from here (try opening a door with use)"
+            else:
+                stalls = 0
         gained = (nav.explored_fraction() - start_pct) * 100
         return "completed", f"explored {gained:.1f}% more of the map ({nav.explored_fraction() * 100:.0f}% total)"
 
@@ -642,14 +653,16 @@ class CommandRunner:
             pos = (self.snap.x, self.snap.y)
             if stop is not None and stop():
                 return "completed", "done"
-            if math.dist(pos, pts[-1]) <= arrive:
-                return "completed", "arrived"
             window = range(idx, min(len(pts), idx + 24))
             idx = min(window, key=lambda k: math.dist(pos, pts[k]))
             if math.dist(pos, pts[idx]) > 160:  # knocked off course / teleported
                 return "failed", "pushed off the path"
 
+            # Doors before arrival: a goal just behind a closed door is "close" but
+            # can only be reached (or even seen) once the door is open.
             door_at = self._door_ahead(pts, idx, cum)
+            if door_at is None and math.dist(pos, pts[-1]) <= arrive:
+                return "completed", "arrived"
             if door_at is not None:
                 sector = nav.cell_sector[nav.to_cell(*pts[door_at])]
                 key = int(sector) if sector >= 0 else door_at

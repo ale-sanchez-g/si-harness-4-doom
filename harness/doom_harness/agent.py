@@ -37,7 +37,7 @@ class Agent:
             (self.recorder.dir / name).write_text(prompt, encoding="utf-8")
         return LLMPolicy(self.llm, prompt, reasoning=self.cfg.reasoning, history=self.cfg.history,
                          attack_seconds=self.cfg.attack_seconds, explore_seconds=self.cfg.explore_seconds,
-                         reminder=self.playbook.reminder)
+                         reminder=self.playbook.reminder, facts=self.playbook.facts)
 
     # ------------------------------------------------------------------ run
     def run(self) -> list[dict]:
@@ -71,7 +71,9 @@ class Agent:
             if obs["episode"]["finished"]:
                 turn -= 1
                 break
-            view = TurnView(obs, banned_ids=memory.banned_ids(turn))
+            view = TurnView(obs, banned_ids=memory.banned_ids(turn),
+                            allowed=self.playbook.actions if self.playbook else None,
+                            blocked=memory.looping_actions())
             decision: Decision = policy.decide(view, memory, turn)
             if decision.source == "llm":
                 latencies.append(decision.latency)
