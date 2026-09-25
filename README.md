@@ -222,7 +222,7 @@ encoded in the defaults:
 Measured in a 4-core CPU sandbox without a GPU.
 
 **Decision quality** (`make eval`: 11 situations, each asked twice), `granite4.2:3b`:
-**21/22 (96%)** rule-correct decisions, median **9 s per decision**. A GPU or
+**21/22 (96%)** rule-correct decisions, median **10 s per decision**. A GPU or
 Apple Silicon brings this well under 2 s. For 1B and 340M models, see
 [Smaller models](#smaller-models).
 
@@ -269,14 +269,16 @@ OLLAMA_MODEL=granite4:1b-h        # or granite4:350m-h
 HARNESS_PLAYBOOK=small
 ```
 
-| Model             | Parameters | `make eval`, `small` playbook | Freedoom MAP01, every decision by the model           | Per decision in game |
-|-------------------|-----------:|------------------------------:|--------------------------------------------------------|---------------------:|
-| `granite4.2:3b`   | 3.7B       | 21/22 (`default` playbook)    | exit in 38 turns, 9 kills, 5 damage taken (`default`)   | 16.6 s               |
-| `granite4:1b-h`   | 1.5B       | **22/22**                     | exit in 30 turns, 8 kills, 5 damage taken               | 7.2 s                |
-| `granite4:350m-h` | 340M       | 18/22                         | exit in 4 of 4 runs (24 to 41 turns), 8-9 kills, 0-4 damage taken | **1.8 s**  |
+| Model             | Parameters | `make eval`, `default` playbook | `make eval`, `small` playbook | Freedoom MAP01, every decision by the model | Per decision in game |
+|-------------------|-----------:|--------------------------------:|------------------------------:|---------------------------------------------|---------------------:|
+| `granite4.2:3b`   | 3.7B       | **21/22**                       | 21/22                         | exit in 38 turns, 9 kills, 5 damage taken (`default` playbook) | 16.6 s |
+| `granite4:1b-h`   | 1.5B       | 11/22                           | **22/22**                     | exit in 30 turns, 8 kills, 5 damage taken   | 7.2 s                |
+| `granite4:350m-h` | 340M       | 9/22                            | 18/22                         | exit in 4 of 4 runs (24 to 41 turns), 8-9 kills, 0-4 damage taken | **1.8 s** |
 
 Same 4-core CPU; Q4_K_M weights for the 3B model, Q8_0 for the Nano models. No
 fallbacks and no repaired answers in any game. A 340M run takes 75-90 s for the level.
+The `small` playbook takes the 1B model from 11 to 22 correct and doubles the 340M
+model's score; the 3B model does as well with either.
 
 - **The 1B model plays like the 3B model at about twice the speed.** Its
   `Thought` is a faithful checklist: `DANGER no, LOW HEALTH no, ENEMIES 1 -> attack E1`.
