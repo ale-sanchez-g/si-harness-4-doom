@@ -139,10 +139,14 @@ def situation_report(view: TurnView, memory: Memory, turn: int, history: int = 4
         weapon += f" ({p['ammo']} ammo)"
     others = [w["name"].replace("_", " ") for w in p["weapons"]
               if w["usable"] and w["name"] not in (p["weapon"], "fist")]
-    # Spell the state out: small models misread bare numbers ("health 100 is low").
+    # ~1B models misread bare numbers ("health 100 is low"), so FACTS-style playbooks get
+    # a label. The 3B model reasons better from the number and rule 2's "30 or less": with
+    # "20 (LOW HEALTH!)" it attacked instead of retreating (eval: 1/6 vs 6/6 without).
     health = p["health"]
-    status = "LOW HEALTH!" if health <= 30 else ("hurt" if health < 70 else "good")
-    you = f"YOU: health {health} ({status}), armor {p['armor']}, weapon {weapon}"
+    you = f"YOU: health {health}"
+    if facts:
+        you += " (LOW HEALTH!)" if health <= 30 else (" (hurt)" if health < 70 else " (good)")
+    you += f", armor {p['armor']}, weapon {weapon}"
     if others:
         you += f", also carrying {', '.join(others)}"
     you += f", kills {p['kills']}"

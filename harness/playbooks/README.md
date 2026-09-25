@@ -33,8 +33,10 @@ facts: true
 - `actions` limits the menu the model chooses from (it is still reduced to what
   makes sense each turn: no `attack` without an enemy, no `retreat` without a threat).
 - `facts: true` makes the harness end every report with a pre-computed checklist,
-  for example `FACTS: DANGER no | LOW HEALTH no | ENEMIES 1 | HINT no | ITEMS 2 | EXIT no`.
-  Small models read literal values reliably but mis-derive them from prose.
+  for example `FACTS: DANGER no | LOW HEALTH no | ENEMIES 1 | HINT no | ITEMS 2 | EXIT no`,
+  and label the health value (`health 25 (LOW HEALTH!)`). Small models read literal
+  values reliably but mis-derive them from prose. Leave it off for ~3B models: the
+  label made `granite4.2:3b` attack at low health instead of retreating.
 
 Two playbooks ship with the harness:
 
@@ -62,7 +64,7 @@ YOUR LAST TURNS (the past, may be out of date):
   T7 pickup I1 -> completed: picked up the bullet clip
   T8 pickup I1 -> interrupted: stopped on the way to the bullet clip: a Zombieman came into view
 NOW:
-YOU: health 100 (good), armor 0, weapon pistol (64 ammo), kills 2
+YOU: health 100, armor 0, weapon pistol (64 ammo), kills 2
 ENEMIES IN VIEW: 1 (attack them)
   E1 Zombieman - 800 away, straight ahead - weak zombie with a rifle
 USEFUL ITEMS: 2 (pickup them when no enemy is in view)

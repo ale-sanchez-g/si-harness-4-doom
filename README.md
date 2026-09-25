@@ -123,7 +123,7 @@ YOUR LAST TURNS (the past, may be out of date):
   T7 pickup I1 -> completed: picked up the bullet clip
   T8 pickup I1 -> interrupted: stopped on the way to the bullet clip: a Zombieman came into view
 NOW:
-YOU: health 100 (good), armor 0, weapon pistol (64 ammo), kills 2
+YOU: health 100, armor 0, weapon pistol (64 ammo), kills 2
 ENEMIES IN VIEW: 1 (attack them)
   E1 Zombieman - 800 away, straight ahead - weak zombie with a rifle
 USEFUL ITEMS: 2 (pickup them when no enemy is in view)
@@ -295,7 +295,12 @@ What it took, each step checked with `make eval`:
    first matching rule.
 2. **Fewer, sensible actions.** Seven instead of eleven, and no `retreat` or
    `dodge` without a threat.
-3. **Labels on numbers:** `health 100 (good)`, `health 25 (LOW HEALTH!)`.
+3. **Labels on numbers**, for the small models only: `health 100 (good)`,
+   `health 25 (LOW HEALTH!)`. The same label misled the 3B model: at 20 health
+   with an imp in view it chose `attack` in 5 of 6 samples ("health is 20 (LOW)
+   and enemies are in view, so I must attack"), and `retreat` in 6 of 6 with the
+   bare number, which it compares with rule 2's "30 or less". The `default`
+   playbook therefore shows the bare number.
 4. **Nothing to parrot.** With a one-line rules reminder at the end of each
    report, the 340M model copied the reminder (`ENEMIES 1+ -> attack E1`) instead
    of reading the FACTS line: 15/22 on the eval, and 86 turns to finish MAP01,

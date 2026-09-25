@@ -33,7 +33,7 @@ def test_situation_report_contents(obs_enemy):
     text = situation_report(TurnView(obs_enemy), memory, turn=2)
     assert text.startswith("TURN 2 |")
     assert "E1 Zombieman" in text and "ENEMIES IN VIEW: 1 (attack them)" in text
-    assert "YOU: health 100 (good)," in text
+    assert "YOU: health 100, armor" in text  # bare number: a label misleads the 3B model
     assert "I1 bullet clip" in text and "USEFUL ITEMS: 2 (" in text
     assert "T1 explore -> interrupted: enemy spotted: Zombieman" in text
     # history comes before the current state, which starts with NOW:
@@ -146,7 +146,9 @@ def test_facts_line(make_obs, obs_start):
     assert "FACTS: DANGER yes | LOW HEALTH yes | ENEMIES 1 | HINT yes | ITEMS 1 | EXIT no" in text
     calm = situation_report(TurnView(make_obs(enemies=[], items=[], known_items=[])), Memory(), 3, facts=True)
     assert "FACTS: DANGER no | LOW HEALTH no | ENEMIES 0 | HINT no | ITEMS 0 | EXIT no" in calm
-    assert "FACTS:" not in situation_report(TurnView(obs), Memory(), 3)
+    assert "YOU: health 20 (LOW HEALTH!), armor" in text and "YOU: health 100 (good), armor" in calm
+    plain = situation_report(TurnView(obs), Memory(), 3)
+    assert "FACTS:" not in plain and "YOU: health 20, armor" in plain  # labels only with FACTS
 
 
 def test_loop_breaker(make_obs):
