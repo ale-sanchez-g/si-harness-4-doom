@@ -5,6 +5,7 @@
 #
 # GPU (NVIDIA):   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
 # Host Ollama:    docker compose -f docker-compose.yml -f docker-compose.host-ollama.yml up --build doom harness
+# LLM traces UI:  make observe   (adds Arize Phoenix on http://localhost:6006)
 # All settings can be changed in .env (see .env.example).
 name: doom-llm
 
@@ -54,9 +55,11 @@ services:
     environment:
       DOOM_URL: http://doom:8000
       OLLAMA_HOST: ${HARNESS_OLLAMA_HOST:-http://ollama:11434}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-granite4.2:3b}
+      # xs | s | m: model + playbook preset; OLLAMA_MODEL / HARNESS_PLAYBOOK override it
+      HARNESS_PRESET: ${HARNESS_PRESET:-m}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-}
       HARNESS_POLICY: ${HARNESS_POLICY:-llm}
-      HARNESS_PLAYBOOK: ${HARNESS_PLAYBOOK:-default}
+      HARNESS_PLAYBOOK: ${HARNESS_PLAYBOOK:-}
       HARNESS_SCENARIO: ${HARNESS_SCENARIO:-freedoom2}
       HARNESS_MAP: ${HARNESS_MAP:-MAP01}
       HARNESS_SKILL: ${HARNESS_SKILL:-}
@@ -66,6 +69,11 @@ services:
       HARNESS_TEMPERATURE: ${HARNESS_TEMPERATURE:-0.2}
       HARNESS_REASONING: ${HARNESS_REASONING:-true}
       HARNESS_NUM_CTX: ${HARNESS_NUM_CTX:-8192}
+      # Observability: traces always go to runs/<run>/traces.jsonl; set an OTLP endpoint
+      # (http://phoenix:6006 with `make observe`) to also see them in a trace UI.
+      HARNESS_TRACE: ${HARNESS_TRACE:-true}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-doom-harness}
     volumes:
       # Edit the instructions on the host; no rebuild needed.
       - ./harness/playbooks:/app/playbooks:ro
@@ -73,5 +81,19 @@ services:
     command: ["play"]
     restart: "no"
 
+  # Local LLM observability UI: every prompt, response, token count and latency as a
+  # trace (OpenTelemetry + OpenInference). Only started with the "observability" profile.
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    profiles: ["observability"]
+    ports:
+      - "${PHOENIX_PORT:-6006}:6006"   # UI + OTLP/HTTP (/v1/traces)
+    environment:
+      PHOENIX_WORKING_DIR: /mnt/data
+    volumes:
+      - phoenix:/mnt/data
+    restart: unless-stopped
+
 volumes:
   ollama:
+  phoenix:

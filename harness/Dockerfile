@@ -9,7 +9,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 COPY pyproject.toml ./
 COPY doom_harness ./doom_harness
-RUN pip install .
+RUN pip install ".[otel]"
 
 # Playbooks (the instructions given to the model) live outside the package so they
 # can be edited and mounted without rebuilding: see docker-compose.yml.

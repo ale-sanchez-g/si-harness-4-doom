@@ -50,11 +50,21 @@ that Ollama reuses the cached prompt and each turn only processes a short report
 | Mac, or Ollama already installed | `ollama pull granite4.2:3b`, then `make host-ollama` (Docker on a Mac cannot use the GPU; native Ollama can) |
 | No LLM, just the game      | `make scripted` runs the rule-based baseline                                     |
 
-More `make` targets: `play`, `eval`, `bench`, `check`, `prompt`, `logs`, `down`.
-Examples: `make play ARGS="--scenario defend_the_center --episodes 5"`, or
-set `OLLAMA_MODEL=qwen3:4b` in `.env` to try another model. On a slow machine,
-`OLLAMA_MODEL=granite4:1b-h` with `HARNESS_PLAYBOOK=small` plays as well at about
-twice the speed (see [Smaller models](#smaller-models)).
+More `make` targets: `play`, `eval`, `compare`, `report`, `observe`, `bench`,
+`check`, `prompt`, `logs`, `down`. Examples: `make play ARGS="--scenario
+defend_the_center --episodes 5"`, or set `OLLAMA_MODEL=qwen3:4b` in `.env` to try
+another model.
+
+**Model size.** `HARNESS_PRESET` in `.env` picks one of three tested setups:
+
+| Preset | Model             | Size | Playbook  | Per decision (4-core CPU) |
+|--------|-------------------|-----:|-----------|--------------------------:|
+| `xs`   | `granite4:350m-h` | 340M | `small`   | ~2 s                      |
+| `s`    | `granite4:1b-h`   | 1.5B | `small`   | ~7 s                      |
+| `m`    | `granite4.2:3b`   | 3.7B | `default` | ~15 s (the default)       |
+
+`make compare` plays the same games with all three and prints a side-by-side table
+(see [Comparing models](#comparing-models)).
 
 ---
 
@@ -168,9 +178,10 @@ the menu until the model does something else.
 ### 7. Observability
 - the viewer at `http://localhost:8000` shows the live game, the model's latest
   thought and action, the explored map and the decision log;
-- `runs/<timestamp>_<scenario>_<model>/` holds `steps.jsonl` (prompt, raw model
-  output, command, result and latency per turn), `episodes.json`, `summary.json`
-  and the exact system prompt used.
+- every run writes **local traces** (below), and `make report` summarises them;
+- `make observe` adds a **trace UI** (Arize Phoenix) that shows every LLM call.
+
+See [Observability](#observability) for the details.
 
 ---
 
@@ -265,8 +276,7 @@ Granite 4.0 Nano models are much smaller and faster, and with the compact
 
 ```bash
 # .env
-OLLAMA_MODEL=granite4:1b-h        # or granite4:350m-h
-HARNESS_PLAYBOOK=small
+HARNESS_PRESET=s        # granite4:1b-h + small playbook; xs = granite4:350m-h
 ```
 
 | Model             | Parameters | `make eval`, `default` playbook | `make eval`, `small` playbook | Freedoom MAP01, every decision by the model | Per decision in game |
@@ -313,6 +323,83 @@ What it took, each step checked with `make eval`:
 Testing the small models also found a server bug: `explore` next to a closed door
 with unexplored space right behind it could "arrive" without moving and loop
 forever. It now opens the door first, and gives up on spots it cannot reach.
+
+---
+
+## Observability
+
+Every run is traced, locally, with no extra service. `runs/<timestamp>_<scenario>_<model>/`
+holds:
+
+| File              | What is in it                                                                 |
+|-------------------|-------------------------------------------------------------------------------|
+| `traces.jsonl`    | one span per run, episode, turn, game command and LLM call (see below)         |
+| `prompts/`        | each distinct system prompt, stored once and referenced from the traces        |
+| `steps.jsonl`     | one line per turn: situation report, raw answer, command, result, tokens       |
+| `episodes.json`, `summary.json` | outcome per episode and for the run, including token totals      |
+
+The spans nest `harness.run > episode > turn > llm.chat | game.command`. An `llm.chat`
+span has the full request and response and uses the OpenTelemetry GenAI and
+OpenInference attribute names:
+
+```json
+{"name": "llm.chat", "kind": "client", "duration_ms": 1715.6, "status": "ok",
+ "attributes": {"gen_ai.request.model": "granite4:350m-h", "gen_ai.request.temperature": 0.2,
+   "gen_ai.request.max_tokens": 200, "gen_ai.usage.input_tokens": 1291, "gen_ai.usage.output_tokens": 36,
+   "gen_ai.response.finish_reasons": ["stop"], "llm.tokens_per_second": 45.7,
+   "ollama.load_duration_ms": 1.4, "ollama.prompt_eval_duration_ms": 901.8, "ollama.eval_duration_ms": 787.4,
+   "harness.allowed_actions": ["attack", "pickup", "explore", "retreat", "dodge", "turn"],
+   "harness.action": "attack", "harness.arg": "E1", "...": "..."},
+ "payload": {
+   "messages": [{"role": "system", "content_ref": "prompts/system_9e403ec6d5f0.md", "chars": 3341},
+                {"role": "user", "content": "TURN 2 | freedoom2 MAP01 | game time 2.3s\nYOUR LAST TURNS ..."}],
+   "schema": {"...": "the JSON schema enforced on this turn"},
+   "options": {"temperature": 0.2, "num_ctx": 8192, "num_predict": 200},
+   "response": "{\"Thought\": \"DANGER no, LOW HEALTH no, ENEMIES 1 -> attack E1\", \"action\": \"attack\", \"arg\": \"E1\"}",
+   "parsed": {"Thought": "DANGER no, LOW HEALTH no, ENEMIES 1 -> attack E1", "action": "attack", "arg": "E1"}}}
+```
+
+A turn that fell back to the scripted policy is marked as an error span, with the reason.
+Token counts are Ollama's own (`prompt_eval_count`, `eval_count`).
+
+**Summaries.** `make report` (or `python -m doom_harness report [run dirs]`) prints
+outcome, LLM calls, errors, tokens in/out, tokens per call, p50/p95 latency and
+tokens per second for the latest run, or side by side for several runs.
+
+**Trace UI.** `make observe` starts the stack plus [Arize Phoenix](https://github.com/Arize-ai/phoenix)
+at **http://localhost:6006**, and the harness exports every span to it over
+OpenTelemetry (OTLP/HTTP). Phoenix shows each LLM call with its messages, response,
+token counts and latency, nested under its turn and episode. To trace one-off
+commands, start Phoenix with `make phoenix` and add `OBSERVE=1`
+(`make eval OBSERVE=1 ARGS="--preset xs"`), or set `OTEL_EXPORTER_OTLP_ENDPOINT` in
+`.env`. Any OTLP-compatible backend (Jaeger, Grafana Tempo, Langfuse...) works the same
+way. Outside Docker, install the exporter with `pip install -e "./harness[otel]"`.
+
+![Phoenix: one LLM call of a turn, with its parameters, system prompt and situation report](docs/phoenix.png)
+
+### Comparing models
+
+```bash
+make pull                                  # download the xs, s and m models once
+make compare                               # same map and seed for xs, s and m, then a table
+make compare ARGS="--eval"                 # quicker: the 11 eval situations instead of games
+make compare ARGS="--models qwen3:4b,granite4.2:3b --playbook default --map MAP02"
+make compare OBSERVE=1                     # ...and send every call to Phoenix
+```
+
+Each model gets its own run directory, and the table is saved as
+`runs/compare_<timestamp>.md`:
+
+| model | playbook | scenario | success | deaths | avg turns | avg kills | fallback | LLM calls | errors | tokens in | tokens out | in/call | out/call | p50 s | p95 s | tok/s |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| granite4:350m-h | small | freedoom2 | 1/1 | 0 | 41 | 9 | 0 | 41 | 0 | 55,086 | 1441 | 1344 | 35 | 1.8 | 2.07 | 49.2 |
+| granite4:1b-h | small | freedoom2 | 1/1 | 0 | 35 | 9 | 0 | 35 | 0 | 46,778 | 1470 | 1337 | 42 | 6.7 | 7.42 | 15.2 |
+| granite4.2:3b | default | freedoom2 | 1/1 | 0 | 34 | 9 | 0 | 34 | 0 | 54,042 | 1718 | 1589 | 51 | 14.45 | 16.95 | 8.4 |
+
+That is `compare --presets xs,s,m --map MAP01 --episodes 1 --seed 11` on a 4-core CPU:
+all three reached the exit; the 340M model needed a few more turns but decided eight
+times faster than the 3B one. One episode per model is an anecdote, not a benchmark:
+use `--episodes 5` (and several maps) before drawing conclusions.
 
 ---
 
@@ -375,13 +462,16 @@ Everything is in `.env` (see `.env.example`). The most useful settings:
 
 | Variable               | Default          | Meaning                                                           |
 |------------------------|------------------|-------------------------------------------------------------------|
-| `OLLAMA_MODEL`         | `granite4.2:3b`  | any Ollama chat model                                             |
+| `HARNESS_PRESET`       | `m`              | `xs`, `s` or `m`: model + playbook (see [Quick start](#quick-start)) |
+| `OLLAMA_MODEL`         | (preset)         | any Ollama chat model; overrides the preset's model               |
 | `HARNESS_POLICY`       | `llm`            | `llm` or `scripted` (baseline, no model)                          |
-| `HARNESS_PLAYBOOK`     | `default`        | file in `harness/playbooks/`; `small` for ~1B models              |
+| `HARNESS_PLAYBOOK`     | (preset)         | file in `harness/playbooks/`; `small` for ~1B models              |
 | `HARNESS_SCENARIO` / `HARNESS_MAP` | `freedoom2` / `MAP01` | what to play                                       |
 | `HARNESS_EPISODES`, `HARNESS_MAX_STEPS` | `3`, `400` | how long to play                                       |
 | `HARNESS_CAMPAIGN`     | `true`           | after an exit, continue with the next map                         |
 | `HARNESS_REASONING`    | `true`           | ask for a one-sentence `Thought` before each action               |
+| `HARNESS_TRACE`        | `true`           | write `runs/<run>/traces.jsonl` (prompts, responses, tokens, timings) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | (empty)   | also export traces over OTLP/HTTP, e.g. `http://phoenix:6006`     |
 | `HARNESS_THINK`        | auto (off)       | Ollama's `think` flag for reasoning models                        |
 | `HARNESS_TEMPERATURE`  | `0.2`            | sampling temperature                                              |
 | `DOOM_PLAYBACK_FPS`    | `35`             | 35 = watchable real time, 0 = as fast as possible                 |
@@ -417,7 +507,8 @@ server/doom_server/   session.py (ViZDoom lifecycle, per-tic tracking), percepti
                       exploration), wad.py (line specials), api.py, static/index.html
 harness/doom_harness/ agent.py (turn loop), actions.py (action space + schema),
                       prompts.py, policies.py (LLM + scripted), memory.py, llm.py,
-                      evals.py (decision-quality checks), cli.py
+                      evals.py (decision-quality checks), telemetry.py (traces),
+                      report.py (run summaries), cli.py
 harness/playbooks/    the instructions: default.md, small.md (~1B models), scenarios/*.md
 docker-compose*.yml   doom + ollama + harness (GPU / host-Ollama overrides)
 ```

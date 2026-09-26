@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import copy
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Callable
 
 from .actions import TurnView
@@ -21,6 +21,7 @@ from .llm import LLM
 from .memory import Memory, StepRecord
 from .policies import LLMPolicy
 from .prompts import Playbook, system_prompt
+from .telemetry import Tracer
 
 BASE_OBS: dict = {
     "episode": {"id": "eval", "scenario": "freedoom2", "title": "Freedoom: Phase 2", "map": "MAP01", "skill": 3,
@@ -121,22 +122,32 @@ class EvalResult:
     thought: str
     latency: float
     source: str
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
 
 
 def run_evals(llm: LLM, playbook: Playbook, reasoning: bool = True, repeat: int = 1,
-              cases: list[EvalCase] | None = None, out: Callable[[str], None] = print) -> dict:
+              cases: list[EvalCase] | None = None, out: Callable[[str], None] = print,
+              tracer: Tracer | None = None) -> dict:
+    tracer = tracer or Tracer(enabled=False)
     results: list[EvalResult] = []
     for case in cases or CASES:
         obs = case.observation()
         policy = LLMPolicy(llm, system_prompt(playbook, obs, reasoning), reasoning=reasoning,
                            reminder=playbook.reminder, facts=playbook.facts, retries=0)
-        for _ in range(repeat):
+        for sample in range(repeat):
             t0 = time.monotonic()
-            d = policy.decide(TurnView(obs, allowed=playbook.actions), case.memory(), turn=8)
-            ok = d.source == "llm" and d.resolved.action in case.expect and \
-                (case.expect_arg is None or d.resolved.arg == case.expect_arg)
+            with tracer.span("eval.case", case=case.name, sample=sample + 1,
+                             expected=sorted(case.expect)) as span:
+                d = policy.decide(TurnView(obs, allowed=playbook.actions), case.memory(), turn=8)
+                ok = d.source == "llm" and d.resolved.action in case.expect and \
+                    (case.expect_arg is None or d.resolved.arg == case.expect_arg)
+                span.set(passed=ok, action=d.resolved.action, arg=d.resolved.arg, thought=d.thought,
+                         prompt_tokens=d.prompt_tokens, completion_tokens=d.completion_tokens)
+                if not ok:
+                    span.error(f"expected {'/'.join(sorted(case.expect))}, got {d.resolved.action}")
             r = EvalResult(case.name, ok, d.resolved.action, d.resolved.arg, d.thought,
-                           time.monotonic() - t0, d.source)
+                           time.monotonic() - t0, d.source, d.prompt_tokens, d.completion_tokens)
             results.append(r)
             out(f"{'PASS' if ok else 'FAIL'} {case.name:<34} {r.latency:5.1f}s -> {r.action} {r.arg}"
                 f"{'' if d.source == 'llm' else ' [' + d.source + ']'} | {r.thought}")
@@ -144,7 +155,10 @@ def run_evals(llm: LLM, playbook: Playbook, reasoning: bool = True, repeat: int 
     lat = sorted(r.latency for r in results)
     summary = {"model": llm.model, "passed": passed, "total": len(results),
                "accuracy": round(passed / len(results), 3) if results else 0.0,
-               "median_latency": round(lat[len(lat) // 2], 2) if lat else 0.0}
+               "median_latency": round(lat[len(lat) // 2], 2) if lat else 0.0,
+               "prompt_tokens": sum(r.prompt_tokens for r in results),
+               "completion_tokens": sum(r.completion_tokens for r in results),
+               "cases": [asdict(r) for r in results]}
     out(f"\n{passed}/{len(results)} correct ({summary['accuracy']:.0%}), "
         f"median {summary['median_latency']}s per decision")
     return summary

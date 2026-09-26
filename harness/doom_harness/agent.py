@@ -14,18 +14,21 @@ from .memory import Memory, StepRecord
 from .policies import Decision, LLMPolicy, ScriptedPolicy
 from .prompts import load_playbook, system_prompt
 from .recorder import RunRecorder
+from .telemetry import Tracer
 
 log = logging.getLogger(__name__)
 
 
 class Agent:
     def __init__(self, cfg: HarnessConfig, client: DoomClient, llm: LLM | None = None,
-                 recorder: RunRecorder | None = None, out: Callable[[str], None] = print):
+                 recorder: RunRecorder | None = None, out: Callable[[str], None] = print,
+                 tracer: Tracer | None = None):
         self.cfg = cfg
         self.client = client
         self.llm = llm
         self.recorder = recorder
         self.out = out
+        self.tracer = tracer or Tracer(enabled=False)
         self.playbook = load_playbook(cfg.playbook_path()) if cfg.policy == "llm" else None
 
     def make_policy(self, obs: dict):
@@ -43,15 +46,28 @@ class Agent:
     def run(self) -> list[dict]:
         results = []
         next_map = self.cfg.map
-        for i in range(self.cfg.episodes):
-            summary = self.play_episode(i + 1, next_map)
-            results.append(summary)
-            if self.recorder is not None:
-                self.recorder.episode(summary)
-            next_map = "next" if (self.cfg.campaign and summary["end_reason"] == "exit") else self.cfg.map
+        cfg = self.cfg
+        with self.tracer.span("harness.run", policy=cfg.policy, playbook=cfg.playbook if self.playbook else None,
+                              model=self.llm.model if self.llm else None, scenario=cfg.scenario,
+                              preset=cfg.preset if self.llm else None, episodes=cfg.episodes) as span:
+            for i in range(cfg.episodes):
+                summary = self.play_episode(i + 1, next_map)
+                results.append(summary)
+                if self.recorder is not None:
+                    self.recorder.episode(summary)
+                next_map = "next" if (cfg.campaign and summary["end_reason"] == "exit") else cfg.map
+            span.set(exits=sum(r["end_reason"] == "exit" for r in results),
+                     prompt_tokens=sum(r["prompt_tokens"] for r in results),
+                     completion_tokens=sum(r["completion_tokens"] for r in results))
         return results
 
     def play_episode(self, index: int, map_name: str | None = None) -> dict:
+        with self.tracer.span("episode", index=index, map=map_name) as span:
+            summary = self._play_episode(index, map_name)
+            span.set(**{k: v for k, v in summary.items() if k != "episode"})
+            return summary
+
+    def _play_episode(self, index: int, map_name: str | None = None) -> dict:
         cfg = self.cfg
         obs = self.client.new_episode(scenario=cfg.scenario, map=map_name, skill=cfg.skill,
                                       seed=None if cfg.seed is None else cfg.seed + index - 1,
@@ -63,7 +79,7 @@ class Agent:
                  f"policy={policy.name}{' model=' + self.llm.model if policy.name == 'llm' and self.llm else ''} ===")
         self.out(f"Goal: {ep['goal']}")
         latencies: list[float] = []
-        fallbacks = 0
+        fallbacks = llm_calls = tokens_in = tokens_out = 0
         turn = 0
         started = time.monotonic()
         result: dict = {"status": "", "reason": ""}
@@ -71,18 +87,34 @@ class Agent:
             if obs["episode"]["finished"]:
                 turn -= 1
                 break
-            view = TurnView(obs, banned_ids=memory.banned_ids(turn),
-                            allowed=self.playbook.actions if self.playbook else None,
-                            blocked=memory.looping_actions())
-            decision: Decision = policy.decide(view, memory, turn)
-            if decision.source == "llm":
-                latencies.append(decision.latency)
-            elif decision.source == "fallback":
-                fallbacks += 1
-            cmd = decision.resolved.command
-            t0 = time.monotonic()
-            result = self.client.command(**cmd)
-            exec_time = time.monotonic() - t0
+            with self.tracer.span("turn", turn=turn, episode=index) as turn_span:
+                view = TurnView(obs, banned_ids=memory.banned_ids(turn),
+                                allowed=self.playbook.actions if self.playbook else None,
+                                blocked=memory.looping_actions())
+                decision: Decision = policy.decide(view, memory, turn)
+                if decision.source == "llm":
+                    latencies.append(decision.latency)
+                elif decision.source == "fallback":
+                    fallbacks += 1
+                llm_calls += decision.llm_calls
+                tokens_in += decision.prompt_tokens
+                tokens_out += decision.completion_tokens
+                cmd = decision.resolved.command
+                t0 = time.monotonic()
+                with self.tracer.span("game.command", **{f"command.{k}": v for k, v in cmd.items()}) as cmd_span:
+                    result = self.client.command(**cmd)
+                    cmd_span.set(status=result["status"], reason=result["reason"],
+                                 tics=result.get("tics"), **{f"changes.{k}": v for k, v
+                                                             in (result.get("changes") or {}).items()})
+                exec_time = time.monotonic() - t0
+                turn_span.set(source=decision.source, action=decision.resolved.action, arg=decision.resolved.arg,
+                              thought=decision.thought, status=result["status"], reason=result["reason"],
+                              prompt_tokens=decision.prompt_tokens, completion_tokens=decision.completion_tokens,
+                              llm_latency_ms=round(decision.latency * 1000, 1), errors=decision.errors or None,
+                              health=result["observation"]["player"]["health"],
+                              kills=result["observation"]["player"]["kills"])
+                if decision.source == "fallback":
+                    turn_span.error("; ".join(decision.errors) or "model answer unusable, scripted fallback")
             changes = result.get("changes", {})
             rec = StepRecord(
                 turn=turn, action=decision.resolved.action, arg=decision.resolved.arg,
@@ -109,6 +141,7 @@ class Agent:
             "policy": policy.name, "model": self.llm.model if (self.llm and policy.name == "llm") else None,
             "avg_llm_latency": round(sum(latencies) / len(latencies), 2) if latencies else 0.0,
             "fallbacks": fallbacks,
+            "llm_calls": llm_calls, "prompt_tokens": tokens_in, "completion_tokens": tokens_out,
         }
         self.out(f"=== Episode {index} over: {summary['end_reason']} after {turn} turns, "
                  f"{summary['kills']} kills, health {summary['health']}, "

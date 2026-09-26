@@ -24,6 +24,7 @@ class Decision:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     tokens_per_second: float = 0.0
+    llm_calls: int = 0
     errors: list[str] = field(default_factory=list)
 
 
@@ -101,8 +102,10 @@ class LLMPolicy:
         schema = view.schema(self.reasoning)
         errors: list[str] = []
         total_latency = 0.0
+        tokens_in = tokens_out = calls = 0  # summed over retries: what the turn really cost
         reply: LLMReply | None = None
         for attempt in range(self.retries + 1):
+            calls += 1
             try:
                 reply = self.llm.chat(messages, schema)
             except LLMError as exc:
@@ -110,13 +113,15 @@ class LLMPolicy:
                 log.warning("LLM error (attempt %d): %s", attempt + 1, exc)
                 continue
             total_latency += reply.latency
+            tokens_in += reply.prompt_tokens
+            tokens_out += reply.completion_tokens
             resolved = view.resolve(reply.data, self.attack_seconds, self.explore_seconds)
             if resolved is not None:
                 thought = reply.data.get(REASON_KEY) or reply.data.get("thought") or ""
                 return Decision(resolved=resolved, thought=str(thought)[:300],
                                 source="llm", prompt=user, raw=reply.text, latency=total_latency,
-                                prompt_tokens=reply.prompt_tokens, completion_tokens=reply.completion_tokens,
-                                tokens_per_second=reply.tokens_per_second, errors=errors)
+                                prompt_tokens=tokens_in, completion_tokens=tokens_out,
+                                tokens_per_second=reply.tokens_per_second, llm_calls=calls, errors=errors)
             errors.append(f"invalid action {reply.data.get('action')!r}")
             messages = messages + [
                 {"role": "assistant", "content": reply.text},
@@ -124,6 +129,7 @@ class LLMPolicy:
                                             f"Choose one of: {', '.join(view.action_names)}."}]
         fb = self.fallback.decide(view, memory, turn)
         fb.source, fb.prompt, fb.errors, fb.latency = "fallback", user, errors, total_latency
+        fb.prompt_tokens, fb.completion_tokens, fb.llm_calls = tokens_in, tokens_out, calls
         if reply is not None:
             fb.raw = reply.text
         return fb

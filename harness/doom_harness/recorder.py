@@ -39,7 +39,17 @@ class RunRecorder:
             "avg_llm_latency": round(sum(e.get("avg_llm_latency", 0) for e in eps) / len(eps), 2) if eps else 0,
             "fallback_rate": round(sum(e.get("fallbacks", 0) for e in eps) /
                                    max(1, sum(e.get("turns", 0) for e in eps)), 3),
+            "llm_calls": sum(e.get("llm_calls", 0) for e in eps),
+            "prompt_tokens": sum(e.get("prompt_tokens", 0) for e in eps),
+            "completion_tokens": sum(e.get("completion_tokens", 0) for e in eps),
         }
         (self.dir / "summary.json").write_text(json.dumps(summary, indent=2, default=str))
         self._steps.close()
         return summary
+
+    def finish_eval(self, summary: dict) -> dict:
+        """Close an eval run (fixed situations, no game): summary.json holds every case."""
+        data = {"kind": "eval", **summary}
+        (self.dir / "summary.json").write_text(json.dumps(data, indent=2, default=str))
+        self._steps.close()
+        return data
