@@ -1,0 +1,2 @@
+- Health is below 50%: pickup medikit (I1) if available, else explore or turn to find more.
+- Health is above 50%: explore or turn to find more medikits.

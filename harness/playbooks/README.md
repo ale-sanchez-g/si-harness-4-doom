@@ -1,7 +1,7 @@
 # Playbooks: the instructions given to the model
 
 A playbook is a Markdown file that becomes the model's **system prompt**. It is
-the main place to change *how* the AI plays. This folder is mounted into the
+the main place to change _how_ the AI plays. This folder is mounted into the
 harness container, so edits apply on the next run without rebuilding.
 
 ```bash
@@ -12,12 +12,12 @@ make bench ARGS="--playbook my_playbook"            # compare against the script
 
 ## Placeholders
 
-| Placeholder         | Replaced with                                                           |
-|---------------------|-------------------------------------------------------------------------|
-| `{goal}`            | the scenario's goal and tips (from the server)                          |
-| `{actions}`         | the actions allowed in this scenario, one per line                      |
-| `{scenario_notes}`  | `scenarios/<scenario>.md` if it exists, otherwise `(none)`              |
-| `{answer_format}`   | the JSON format the model must answer in (matches the enforced schema)  |
+| Placeholder        | Replaced with                                                          |
+| ------------------ | ---------------------------------------------------------------------- |
+| `{goal}`           | the scenario's goal and tips (from the server)                         |
+| `{actions}`        | the actions allowed in this scenario, one per line                     |
+| `{scenario_notes}` | `scenarios/<scenario>.md` if it exists, otherwise `(none)`             |
+| `{answer_format}`  | the JSON format the model must answer in (matches the enforced schema) |
 
 ## Front matter: `actions` and `facts`
 
@@ -40,10 +40,10 @@ facts: true
 
 Two playbooks ship with the harness:
 
-| Playbook  | For                          | Style                                                      |
-|-----------|------------------------------|------------------------------------------------------------|
-| `default` | ~3B+ models (`granite4.2:3b`) | full rules, facts and examples, all 11 actions            |
-| `small`   | ~0.3-1.5B models (`granite4:1b-h`, `granite4:350m-h`) | 7 actions, FACTS line, checklist-style `Thought` |
+| Playbook  | For                                                   | Style                                            |
+| --------- | ----------------------------------------------------- | ------------------------------------------------ |
+| `default` | ~3B+ models (`granite4.2:3b`)                         | full rules, facts and examples, all 11 actions   |
+| `small`   | ~0.3-1.5B models (`granite4:1b-h`, `granite4:350m-h`) | 9 actions, FACTS line, checklist-style `Thought` |
 
 ## `# TURN REMINDER`
 
