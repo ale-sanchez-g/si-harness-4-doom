@@ -1,0 +1,1 @@
+- One monster is somewhere in front of you. Attack it immediately.

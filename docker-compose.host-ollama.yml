@@ -1,0 +1,13 @@
+# Use an Ollama that already runs on the host (e.g. the macOS app, which can use
+# the Apple GPU - Docker on a Mac cannot):
+#   ollama pull granite4.2:3b
+#   docker compose -f docker-compose.yml -f docker-compose.host-ollama.yml up --build doom harness
+services:
+  harness:
+    depends_on: !override
+      doom:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: ${HARNESS_OLLAMA_HOST:-http://host.docker.internal:11434}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

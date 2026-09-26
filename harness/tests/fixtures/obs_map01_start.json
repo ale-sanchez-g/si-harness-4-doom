@@ -1,0 +1,121 @@
+{
+ "episode": {
+  "id": "b7315526",
+  "scenario": "freedoom2",
+  "title": "Freedoom: Phase 2 (full campaign)",
+  "map": "MAP01",
+  "skill": 3,
+  "tic": 11,
+  "time": 0.3,
+  "finished": false,
+  "end_reason": null,
+  "goal": "Survive, kill monsters and find the level exit (usually a switch on a wall or a special floor). Open doors, collect weapons, ammo, armor, health and keys on the way.",
+  "campaign": true,
+  "commands": [
+   "attack",
+   "turn",
+   "face",
+   "move",
+   "goto",
+   "explore",
+   "use",
+   "retreat",
+   "dodge",
+   "select_weapon",
+   "wait",
+   "goto_exit"
+  ],
+  "tips": [
+   "Doors open with 'use'. Coloured doors need the matching key."
+  ],
+  "explored_percent": 4.2
+ },
+ "player": {
+  "x": -192.0,
+  "y": -192.0,
+  "angle": 0.0,
+  "health": 100,
+  "armor": 0,
+  "weapon": "pistol",
+  "weapon_slot": 2,
+  "ammo": 50,
+  "weapons": [
+   {
+    "slot": 1,
+    "name": "fist",
+    "ammo": null,
+    "usable": true
+   },
+   {
+    "slot": 2,
+    "name": "pistol",
+    "ammo": 50,
+    "usable": true
+   }
+  ],
+  "ammo_by_type": {
+   "bullets": 50,
+   "shells": 0,
+   "rockets": 0,
+   "cells": 0
+  },
+  "keys": [],
+  "kills": 0,
+  "items": 0,
+  "secrets": 0,
+  "damage_dealt": 0,
+  "damage_taken": 0,
+  "attack_ready": false,
+  "dead": false
+ },
+ "enemies": [],
+ "items": [],
+ "known_items": [],
+ "hazards": [],
+ "projectiles": [],
+ "heard": [],
+ "walls": {
+  "front": {
+   "distance": 888,
+   "blocked_by": "door"
+  },
+  "front_left": {
+   "distance": 264,
+   "blocked_by": "wall"
+  },
+  "left": {
+   "distance": 216,
+   "blocked_by": "wall"
+  },
+  "back_left": {
+   "distance": 36,
+   "blocked_by": "wall"
+  },
+  "back": {
+   "distance": 44,
+   "blocked_by": "wall"
+  },
+  "back_right": {
+   "distance": 36,
+   "blocked_by": "wall"
+  },
+  "right": {
+   "distance": 92,
+   "blocked_by": "wall"
+  },
+  "front_right": {
+   "distance": 128,
+   "blocked_by": "wall"
+  }
+ },
+ "exit": null,
+ "doors": [],
+ "switches": [],
+ "recent_events": [
+  {
+   "tic": 1,
+   "type": "message",
+   "text": "+map01 - Hydroelectric Plant"
+  }
+ ]
+}

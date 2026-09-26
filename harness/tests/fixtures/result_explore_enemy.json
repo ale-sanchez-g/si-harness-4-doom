@@ -1,0 +1,188 @@
+{
+ "command": "explore",
+ "status": "interrupted",
+ "reason": "enemy spotted: Zombieman",
+ "tics": 69,
+ "seconds": 1.97,
+ "events": [],
+ "changes": {
+  "health": 0,
+  "armor": 0,
+  "kills": 0,
+  "damage_dealt": 0,
+  "damage_taken": 0,
+  "moved": 881
+ },
+ "observation": {
+  "episode": {
+   "id": "b7315526",
+   "scenario": "freedoom2",
+   "title": "Freedoom: Phase 2 (full campaign)",
+   "map": "MAP01",
+   "skill": 3,
+   "tic": 80,
+   "time": 2.3,
+   "finished": false,
+   "end_reason": null,
+   "goal": "Survive, kill monsters and find the level exit (usually a switch on a wall or a special floor). Open doors, collect weapons, ammo, armor, health and keys on the way.",
+   "campaign": true,
+   "commands": [
+    "attack",
+    "turn",
+    "face",
+    "move",
+    "goto",
+    "explore",
+    "use",
+    "retreat",
+    "dodge",
+    "select_weapon",
+    "wait",
+    "goto_exit"
+   ],
+   "tips": [
+    "Doors open with 'use'. Coloured doors need the matching key."
+   ],
+   "explored_percent": 13.9
+  },
+  "player": {
+   "x": 689.1,
+   "y": -182.0,
+   "angle": 343.2,
+   "health": 100,
+   "armor": 0,
+   "weapon": "pistol",
+   "weapon_slot": 2,
+   "ammo": 50,
+   "weapons": [
+    {
+     "slot": 1,
+     "name": "fist",
+     "ammo": null,
+     "usable": true
+    },
+    {
+     "slot": 2,
+     "name": "pistol",
+     "ammo": 50,
+     "usable": true
+    }
+   ],
+   "ammo_by_type": {
+    "bullets": 50,
+    "shells": 0,
+    "rockets": 0,
+    "cells": 0
+   },
+   "keys": [],
+   "kills": 0,
+   "items": 0,
+   "secrets": 0,
+   "damage_dealt": 0,
+   "damage_taken": 0,
+   "attack_ready": true,
+   "dead": false
+  },
+  "enemies": [
+   {
+    "id": 9,
+    "name": "Zombieman",
+    "distance": 703,
+    "bearing": 18.6,
+    "aimed": false,
+    "threat": 1,
+    "attack": "hitscan",
+    "note": "weak zombie with a rifle",
+    "height": 0,
+    "screen_width": 17
+   }
+  ],
+  "items": [
+   {
+    "id": 31,
+    "name": "Clip",
+    "kind": "ammo",
+    "label": "bullet clip",
+    "distance": 939,
+    "bearing": 36.1,
+    "value": 2,
+    "useful": true,
+    "path_distance": 1026
+   },
+   {
+    "id": 55,
+    "name": "Shotgun",
+    "kind": "weapon",
+    "label": "shotgun",
+    "distance": 847,
+    "bearing": 18.3,
+    "value": 8,
+    "useful": true,
+    "path_distance": 1327
+   }
+  ],
+  "known_items": [],
+  "hazards": [
+   {
+    "id": 17,
+    "name": "ExplosiveBarrel",
+    "distance": 576,
+    "bearing": 12.6,
+    "enemies_nearby": 0
+   },
+   {
+    "id": 20,
+    "name": "ExplosiveBarrel",
+    "distance": 562,
+    "bearing": 28.1,
+    "enemies_nearby": 0
+   }
+  ],
+  "projectiles": [],
+  "heard": [],
+  "walls": {
+   "front": {
+    "distance": 396,
+    "blocked_by": "step"
+   },
+   "front_left": {
+    "distance": 592,
+    "blocked_by": "wall"
+   },
+   "left": {
+    "distance": 84,
+    "blocked_by": "wall"
+   },
+   "back_left": {
+    "distance": 108,
+    "blocked_by": "wall"
+   },
+   "back": {
+    "distance": 604,
+    "blocked_by": "wall"
+   },
+   "back_right": {
+    "distance": 108,
+    "blocked_by": "wall"
+   },
+   "right": {
+    "distance": 56,
+    "blocked_by": "wall"
+   },
+   "front_right": {
+    "distance": 40,
+    "blocked_by": "wall"
+   }
+  },
+  "exit": null,
+  "doors": [],
+  "switches": [],
+  "recent_events": [
+   {
+    "tic": 1,
+    "type": "message",
+    "text": "+map01 - Hydroelectric Plant"
+   }
+  ]
+ }
+}

@@ -1,0 +1,2 @@
+- You cannot walk. Monsters approach from the far side of the room.
+- Attack the closest enemy first; when none is in view, turn left or right to scan.

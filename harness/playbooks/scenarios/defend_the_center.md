@@ -1,0 +1,3 @@
+- You cannot walk. Monsters come from every direction, including behind you.
+- Ammo is limited: only attack enemies that are in view.
+- When no enemy is in view, turn left or right to find the next one.

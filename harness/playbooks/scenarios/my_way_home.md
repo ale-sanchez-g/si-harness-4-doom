@@ -1,0 +1,2 @@
+- There are no enemies. The green armor vest is somewhere in the maze.
+- Explore until the armor shows up in USEFUL ITEMS, then pickup it.
