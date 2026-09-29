@@ -29,7 +29,9 @@ class Agent:
         self.recorder = recorder
         self.out = out
         self.tracer = tracer or Tracer(enabled=False)
-        self.playbook = load_playbook(cfg.playbook_path()) if cfg.policy == "llm" else None
+        self.playbook_path = cfg.playbook_path().resolve() if cfg.policy == "llm" else None
+        self.playbook = load_playbook(
+            self.playbook_path) if self.playbook_path else None
 
     def make_policy(self, obs: dict):
         if self.cfg.policy == "scripted" or self.llm is None or self.playbook is None:
@@ -48,6 +50,8 @@ class Agent:
         next_map = self.cfg.map
         cfg = self.cfg
         with self.tracer.span("harness.run", policy=cfg.policy, playbook=cfg.playbook if self.playbook else None,
+                              playbook_file=str(
+                                  self.playbook_path) if self.playbook_path else None,
                               model=self.llm.model if self.llm else None, scenario=cfg.scenario,
                               preset=cfg.preset if self.llm else None, episodes=cfg.episodes) as span:
             for i in range(cfg.episodes):
@@ -55,7 +59,8 @@ class Agent:
                 results.append(summary)
                 if self.recorder is not None:
                     self.recorder.episode(summary)
-                next_map = "next" if (cfg.campaign and summary["end_reason"] == "exit") else cfg.map
+                next_map = "next" if (
+                    cfg.campaign and summary["end_reason"] == "exit") else cfg.map
             span.set(exits=sum(r["end_reason"] == "exit" for r in results),
                      prompt_tokens=sum(r["prompt_tokens"] for r in results),
                      completion_tokens=sum(r["completion_tokens"] for r in results))
@@ -114,12 +119,14 @@ class Agent:
                               health=result["observation"]["player"]["health"],
                               kills=result["observation"]["player"]["kills"])
                 if decision.source == "fallback":
-                    turn_span.error("; ".join(decision.errors) or "model answer unusable, scripted fallback")
+                    turn_span.error("; ".join(decision.errors)
+                                    or "model answer unusable, scripted fallback")
             changes = result.get("changes", {})
             rec = StepRecord(
                 turn=turn, action=decision.resolved.action, arg=decision.resolved.arg,
                 status=result["status"], reason=result["reason"], thought=decision.thought,
-                events=[e["text"] for e in result.get("events", []) if e["type"] in ("pickup", "kill", "key", "secret")],
+                events=[e["text"] for e in result.get("events", []) if e["type"] in (
+                    "pickup", "kill", "key", "secret")],
                 moved=changes.get("moved", 0), damage_taken=changes.get("damage_taken", 0),
                 damage_dealt=changes.get("damage_dealt", 0),
                 kills=changes.get("kills", 0), target_id=cmd.get("target_id"))

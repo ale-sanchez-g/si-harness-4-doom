@@ -25,14 +25,21 @@ from .telemetry import TracedLLM, Tracer
 def _add_common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--doom-url", help="Doom API server (env DOOM_URL)")
     p.add_argument("--ollama-host", help="Ollama server (env OLLAMA_HOST)")
-    p.add_argument("--preset", choices=list(PRESETS), help="model size preset: xs, s or m (env HARNESS_PRESET)")
-    p.add_argument("--model", help="Ollama model, e.g. granite4.2:3b (env OLLAMA_MODEL; overrides the preset)")
-    p.add_argument("--scenario", help="freedoom2, freedoom1, basic, defend_the_center, ... (env HARNESS_SCENARIO)")
-    p.add_argument("--map", help="map lump, e.g. MAP01 / E1M1 (env HARNESS_MAP)")
+    p.add_argument("--preset", choices=list(PRESETS),
+                   help="model size preset: xs, s or m (env HARNESS_PRESET)")
+    p.add_argument(
+        "--model", help="Ollama model, e.g. granite4.2:3b (env OLLAMA_MODEL; overrides the preset)")
+    p.add_argument(
+        "--scenario", help="freedoom2, freedoom1, basic, defend_the_center, ... (env HARNESS_SCENARIO)")
+    p.add_argument(
+        "--map", help="map lump, e.g. MAP01 / E1M1 (env HARNESS_MAP)")
     p.add_argument("--skill", type=int, help="1-5 (env HARNESS_SKILL)")
-    p.add_argument("--playbook", help="playbook name or path to a .md file (env HARNESS_PLAYBOOK)")
-    p.add_argument("--policy", choices=["llm", "scripted"], help="who decides (env HARNESS_POLICY)")
-    p.add_argument("--no-reasoning", action="store_true", help="skip the 'thought' field (faster)")
+    p.add_argument(
+        "--playbook", help="playbook name or path to a .md file (env HARNESS_PLAYBOOK)")
+    p.add_argument(
+        "--policy", choices=["llm", "scripted"], help="who decides (env HARNESS_POLICY)")
+    p.add_argument("--no-reasoning", action="store_true",
+                   help="skip the 'thought' field (faster)")
     p.add_argument("--temperature", type=float)
     p.add_argument("-v", "--verbose", action="store_true")
 
@@ -65,6 +72,7 @@ def _llm(cfg: HarnessConfig) -> OllamaLLM:
 def _tracer(cfg: HarnessConfig, recorder: RunRecorder, llm: bool = True) -> Tracer:
     tracer = Tracer(recorder.dir if cfg.trace else None, enabled=cfg.trace,
                     resource={"harness.model": cfg.model if llm else None, "harness.playbook": cfg.playbook,
+                              "harness.playbook.file": str(cfg.playbook_path().resolve()) if llm else None,
                               "harness.preset": cfg.preset, "harness.run": recorder.dir.name})
     if cfg.trace:
         print(f"[harness] traces: {recorder.dir / 'traces.jsonl'}"
@@ -83,10 +91,12 @@ def _play(cfg: HarnessConfig, label: str | None = None) -> dict:
         print(f"[harness] checking model {cfg.model} at {cfg.ollama_host} ...")
         llm.ensure_model(pull=cfg.auto_pull)
         llm.warm_up()
-    recorder = RunRecorder(cfg.runs_dir, label or f"{cfg.scenario or 'default'}_{cfg.model if llm else 'scripted'}")
+    recorder = RunRecorder(
+        cfg.runs_dir, label or f"{cfg.scenario or 'default'}_{cfg.model if llm else 'scripted'}")
     print(f"[harness] logging this run to {recorder.dir}")
     tracer = _tracer(cfg, recorder, llm is not None)
-    agent = Agent(cfg, client, TracedLLM(llm, tracer) if llm else None, recorder, tracer=tracer)
+    agent = Agent(cfg, client, TracedLLM(llm, tracer)
+                  if llm else None, recorder, tracer=tracer)
     try:
         agent.run()
     except KeyboardInterrupt:
@@ -95,6 +105,7 @@ def _play(cfg: HarnessConfig, label: str | None = None) -> dict:
         tracer.close()
     summary = recorder.finish({"model": cfg.model if llm else None, "policy": cfg.policy,
                                "scenario": cfg.scenario, "playbook": cfg.playbook if llm else None,
+                               "playbook_file": str(cfg.playbook_path().resolve()) if llm else None,
                                "preset": cfg.preset if llm else None})
     return {**summary, "run_dir": str(recorder.dir)}
 
@@ -102,7 +113,8 @@ def _play(cfg: HarnessConfig, label: str | None = None) -> dict:
 def cmd_play(args: argparse.Namespace) -> int:
     summary = _play(_config(args))
     print("\n[harness] run summary:\n" + json.dumps(summary, indent=2))
-    print(f"[harness] details: python -m doom_harness report {summary['run_dir']}")
+    print(
+        f"[harness] details: python -m doom_harness report {summary['run_dir']}")
     return 0 if summary["episodes"] else 1
 
 
@@ -113,18 +125,21 @@ def cmd_check(args: argparse.Namespace) -> int:
     try:
         health = client.wait_ready(timeout=5)
         print(f"[ok]   Doom server {cfg.doom_url}: {health}")
-        print("       scenarios:", ", ".join(s["name"] for s in client.scenarios()))
+        print("       scenarios:", ", ".join(
+            s["name"] for s in client.scenarios()))
     except DoomAPIError as exc:
         ok = False
         print(f"[FAIL] Doom server: {exc}")
     llm = _llm(cfg)
     try:
         models = llm.list_models()
-        print(f"[ok]   Ollama {cfg.ollama_host}: {len(models)} models installed")
+        print(
+            f"[ok]   Ollama {cfg.ollama_host}: {len(models)} models installed")
         if llm.has_model():
             print(f"[ok]   model {cfg.model} is installed")
         else:
-            print(f"[warn] model {cfg.model} is not installed yet (it is pulled automatically on 'play')")
+            print(
+                f"[warn] model {cfg.model} is not installed yet (it is pulled automatically on 'play')")
     except LLMError as exc:
         ok = False
         print(f"[FAIL] Ollama: {exc}")
@@ -140,7 +155,8 @@ def cmd_check(args: argparse.Namespace) -> int:
                           {"role": "user", "content": situation_report(view, Memory(), 1, reminder=playbook.reminder,
                                                                        facts=playbook.facts)}],
                          view.schema(cfg.reasoning))
-        print(f"[ok]   test decision in {reply.latency:.1f}s ({reply.tokens_per_second:.0f} tok/s): {reply.data}")
+        print(
+            f"[ok]   test decision in {reply.latency:.1f}s ({reply.tokens_per_second:.0f} tok/s): {reply.data}")
     return 0 if ok else 1
 
 
@@ -148,13 +164,15 @@ def cmd_prompt(args: argparse.Namespace) -> int:
     """Print exactly what the model would see right now (great for tuning the playbook)."""
     cfg = _config(args)
     client = DoomClient(cfg.doom_url)
-    obs = client.new_episode(scenario=cfg.scenario, map=cfg.map) if args.new else client.observation()
+    obs = client.new_episode(scenario=cfg.scenario,
+                             map=cfg.map) if args.new else client.observation()
     playbook = load_playbook(cfg.playbook_path())
     view = TurnView(obs, allowed=playbook.actions)
     print("=" * 30, "SYSTEM PROMPT", "=" * 30)
     print(system_prompt(playbook, obs, cfg.reasoning))
     print("=" * 30, "SITUATION REPORT", "=" * 30)
-    print(situation_report(view, Memory(), 1, reminder=playbook.reminder, facts=playbook.facts))
+    print(situation_report(view, Memory(), 1,
+          reminder=playbook.reminder, facts=playbook.facts))
     print("=" * 30, "JSON SCHEMA", "=" * 30)
     print(json.dumps(view.schema(cfg.reasoning), indent=2))
     return 0
@@ -164,16 +182,20 @@ def _eval(cfg: HarnessConfig, repeat: int) -> dict:
     llm = _llm(cfg)
     llm.ensure_model(pull=cfg.auto_pull)
     playbook = load_playbook(cfg.playbook_path())
-    recorder = RunRecorder(cfg.runs_dir, f"eval_{cfg.model}_{Path(cfg.playbook).stem}")
-    print(f"[harness] evaluating {cfg.model} with playbook '{cfg.playbook}' (logging to {recorder.dir})")
+    recorder = RunRecorder(
+        cfg.runs_dir, f"eval_{cfg.model}_{Path(cfg.playbook).stem}")
+    print(
+        f"[harness] evaluating {cfg.model} with playbook '{cfg.playbook}' (logging to {recorder.dir})")
     tracer = _tracer(cfg, recorder)
     try:
         with tracer.span("harness.eval", model=cfg.model, playbook=cfg.playbook, repeat=repeat) as span:
-            summary = run_evals(TracedLLM(llm, tracer), playbook, cfg.reasoning, repeat=repeat, tracer=tracer)
+            summary = run_evals(TracedLLM(llm, tracer), playbook,
+                                cfg.reasoning, repeat=repeat, tracer=tracer)
             span.set(passed=summary["passed"], total=summary["total"])
     finally:
         tracer.close()
-    summary = recorder.finish_eval({**summary, "playbook": cfg.playbook, "preset": cfg.preset})
+    summary = recorder.finish_eval(
+        {**summary, "playbook": cfg.playbook, "preset": cfg.preset})
     return {**summary, "run_dir": str(recorder.dir)}
 
 
@@ -186,7 +208,8 @@ def cmd_eval(args: argparse.Namespace) -> int:
 def cmd_report(args: argparse.Namespace) -> int:
     """Outcome, LLM calls, tokens and latency of recorded runs, side by side."""
     cfg = HarnessConfig()
-    runs = [Path(r) for r in args.runs] or find_runs(cfg.runs_dir, last=args.last)
+    runs = [Path(r) for r in args.runs] or find_runs(
+        cfg.runs_dir, last=args.last)
     if not runs:
         print(f"[harness] no runs found in {cfg.runs_dir}")
         return 1
@@ -197,9 +220,11 @@ def cmd_report(args: argparse.Namespace) -> int:
 def cmd_compare(args: argparse.Namespace) -> int:
     """Run the same test with several models (presets xs/s/m by default) and compare."""
     if args.models:
-        variants = [("model", m.strip()) for m in args.models.split(",") if m.strip()]
+        variants = [("model", m.strip())
+                    for m in args.models.split(",") if m.strip()]
     else:
-        variants = [("preset", p.strip()) for p in args.presets.split(",") if p.strip()]
+        variants = [("preset", p.strip())
+                    for p in args.presets.split(",") if p.strip()]
         for _, name in variants:
             preset(name)  # fail fast on a typo, before an hour of games
     rows = []
@@ -214,13 +239,16 @@ def cmd_compare(args: argparse.Namespace) -> int:
         cfg.policy = "llm"
         if cfg.seed is None:
             cfg.seed = 1000  # same maps and monsters for every model
-        print(f"\n[harness] ===== {kind} {name}: {cfg.model}, playbook '{cfg.playbook}' =====")
+        print(
+            f"\n[harness] ===== {kind} {name}: {cfg.model}, playbook '{cfg.playbook}' =====")
         result = _eval(cfg, args.repeat) if args.eval else _play(cfg)
         rows.append(summarize_run(result["run_dir"]))
     table = markdown_table(rows)
-    out = Path(HarnessConfig().runs_dir) / f"compare_{time.strftime('%Y%m%d-%H%M%S')}.md"
+    out = Path(HarnessConfig().runs_dir) / \
+        f"compare_{time.strftime('%Y%m%d-%H%M%S')}.md"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(f"# Model comparison ({'eval' if args.eval else 'games'})\n\n{table}\n", encoding="utf-8")
+    out.write_text(
+        f"# Model comparison ({'eval' if args.eval else 'games'})\n\n{table}\n", encoding="utf-8")
     print("\n" + table + f"\n\n[harness] saved to {out}")
     return 0
 
@@ -228,7 +256,8 @@ def cmd_compare(args: argparse.Namespace) -> int:
 def cmd_pull(args: argparse.Namespace) -> int:
     """Download models ahead of time (all presets by default)."""
     names = [n.strip() for n in args.presets.split(",") if n.strip()]
-    models = [m.strip() for m in args.models.split(",")] if args.models else [preset(n)["model"] for n in names]
+    models = [m.strip() for m in args.models.split(",")] if args.models else [
+        preset(n)["model"] for n in names]
     for model in models:
         cfg = _config(args)
         cfg.model = model
@@ -240,7 +269,8 @@ def cmd_pull(args: argparse.Namespace) -> int:
 def cmd_bench(args: argparse.Namespace) -> int:
     base = _config(args)
     scenarios = [s.strip() for s in args.scenarios.split(",") if s.strip()]
-    policies = ["llm", "scripted"] if args.compare else [args.policy or base.policy]
+    policies = ["llm", "scripted"] if args.compare else [
+        args.policy or base.policy]
     client = DoomClient(base.doom_url)
     client.wait_ready(timeout=180)
     rows = []
@@ -253,8 +283,10 @@ def cmd_bench(args: argparse.Namespace) -> int:
             cfg = _config(args)
             cfg.policy, cfg.scenario, cfg.episodes = policy, scenario, args.episodes
             cfg.seed = args.seed if args.seed is not None else 1000
-            recorder = RunRecorder(cfg.runs_dir, f"bench_{scenario}_{cfg.model if llm else 'scripted'}")
-            tracer = Tracer(recorder.dir if cfg.trace else None, enabled=cfg.trace)
+            recorder = RunRecorder(
+                cfg.runs_dir, f"bench_{scenario}_{cfg.model if llm else 'scripted'}")
+            tracer = Tracer(recorder.dir if cfg.trace else None,
+                            enabled=cfg.trace)
             agent = Agent(cfg, client, TracedLLM(llm, tracer) if llm else None, recorder,
                           out=(print if args.verbose else (lambda *_: None)), tracer=tracer)
             try:
@@ -272,7 +304,8 @@ def cmd_bench(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="doom_harness", description="LLM harness that plays Doom")
+    parser = argparse.ArgumentParser(
+        prog="doom_harness", description="LLM harness that plays Doom")
     sub = parser.add_subparsers(dest="cmd")
 
     p = sub.add_parser("play", help="play episodes")
@@ -280,56 +313,76 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--episodes", type=int)
     p.add_argument("--max-steps", type=int)
     p.add_argument("--seed", type=int)
-    p.add_argument("--timeout", type=float, help="game-time limit per episode (seconds)")
-    p.add_argument("--campaign", action="store_true", help="continue to the next map after an exit")
+    p.add_argument("--timeout", type=float,
+                   help="game-time limit per episode (seconds)")
+    p.add_argument("--campaign", action="store_true",
+                   help="continue to the next map after an exit")
     p.set_defaults(func=cmd_play)
 
-    p = sub.add_parser("check", help="check the Doom server, Ollama and the model")
+    p = sub.add_parser(
+        "check", help="check the Doom server, Ollama and the model")
     _add_common(p)
     p.set_defaults(func=cmd_check)
 
-    p = sub.add_parser("prompt", help="print the prompt the model would see now")
+    p = sub.add_parser(
+        "prompt", help="print the prompt the model would see now")
     _add_common(p)
-    p.add_argument("--new", action="store_true", help="start a fresh episode first")
+    p.add_argument("--new", action="store_true",
+                   help="start a fresh episode first")
     p.set_defaults(func=cmd_prompt)
 
-    p = sub.add_parser("eval", help="score the model + playbook on fixed situations (no game needed)")
+    p = sub.add_parser(
+        "eval", help="score the model + playbook on fixed situations (no game needed)")
     _add_common(p)
-    p.add_argument("--repeat", type=int, default=1, help="ask each situation N times")
+    p.add_argument("--repeat", type=int, default=1,
+                   help="ask each situation N times")
     p.set_defaults(func=cmd_eval)
 
-    p = sub.add_parser("bench", help="compare policies/models over several scenarios")
+    p = sub.add_parser(
+        "bench", help="compare policies/models over several scenarios")
     _add_common(p)
-    p.add_argument("--scenarios", default="basic,defend_the_center,deadly_corridor,health_gathering,freedoom2")
-    p.add_argument("--compare", action="store_true", help="run both the LLM and the scripted baseline")
+    p.add_argument(
+        "--scenarios", default="basic,defend_the_center,deadly_corridor,health_gathering,freedoom2")
+    p.add_argument("--compare", action="store_true",
+                   help="run both the LLM and the scripted baseline")
     p.add_argument("--episodes", type=int, default=3)
     p.add_argument("--max-steps", type=int)
     p.add_argument("--seed", type=int)
     p.add_argument("--timeout", type=float)
     p.set_defaults(func=cmd_bench)
 
-    p = sub.add_parser("report", help="outcome, LLM calls, tokens and latency of recorded runs")
-    p.add_argument("runs", nargs="*", help="run directories (default: the latest run)")
-    p.add_argument("--last", type=int, default=1, help="with no directories: the last N runs")
+    p = sub.add_parser(
+        "report", help="outcome, LLM calls, tokens and latency of recorded runs")
+    p.add_argument("runs", nargs="*",
+                   help="run directories (default: the latest run)")
+    p.add_argument("--last", type=int, default=1,
+                   help="with no directories: the last N runs")
     p.add_argument("-v", "--verbose", action="store_true")
     p.set_defaults(func=cmd_report)
 
-    p = sub.add_parser("compare", help="run the same games (or evals) with several models and compare them")
+    p = sub.add_parser(
+        "compare", help="run the same games (or evals) with several models and compare them")
     _add_common(p)
-    p.add_argument("--presets", default="xs,s,m", help="model size presets to compare (default xs,s,m)")
-    p.add_argument("--models", help="comma-separated Ollama models instead of presets")
-    p.add_argument("--eval", action="store_true", help="compare on the fixed eval situations (no game needed)")
-    p.add_argument("--repeat", type=int, default=2, help="with --eval: ask each situation N times")
+    p.add_argument("--presets", default="xs,s,m",
+                   help="model size presets to compare (default xs,s,m)")
+    p.add_argument(
+        "--models", help="comma-separated Ollama models instead of presets")
+    p.add_argument("--eval", action="store_true",
+                   help="compare on the fixed eval situations (no game needed)")
+    p.add_argument("--repeat", type=int, default=2,
+                   help="with --eval: ask each situation N times")
     p.add_argument("--episodes", type=int)
     p.add_argument("--max-steps", type=int)
     p.add_argument("--seed", type=int)
     p.add_argument("--timeout", type=float)
     p.set_defaults(func=cmd_compare)
 
-    p = sub.add_parser("pull", help="download the models of the presets (or --models) into Ollama")
+    p = sub.add_parser(
+        "pull", help="download the models of the presets (or --models) into Ollama")
     _add_common(p)
     p.add_argument("--presets", default=",".join(PRESETS))
-    p.add_argument("--models", help="comma-separated Ollama models instead of presets")
+    p.add_argument(
+        "--models", help="comma-separated Ollama models instead of presets")
     p.set_defaults(func=cmd_pull)
 
     args = parser.parse_args(argv)
