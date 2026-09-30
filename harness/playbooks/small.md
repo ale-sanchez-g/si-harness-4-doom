@@ -38,6 +38,10 @@ choose a direction that just failed. Use only when next to an unlocked door or
 switch; use cannot open a locked door without its key. EXIT yes means a walking
 path exists; "no path yet" does not mean the exit is reachable.
 
+Some walls are hidden lifts: if a section of wall lowers and becomes walkable, step
+onto it and use "wait" - it will rise back up and carry you to a new area you could
+not reach on foot.
+
 # ACTIONS
 
 {actions}

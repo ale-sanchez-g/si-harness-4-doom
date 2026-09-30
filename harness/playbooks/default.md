@@ -42,6 +42,9 @@ Check the rules in this order and use the FIRST one that matches the NOW part:
 - A LOCKED door needs the key of the same colour; explore to find it, but do not repeat
   explore after it reports no reachable area.
 - If you are hurt but "ENEMIES IN VIEW" is none, the enemy is behind you: turn around.
+- Some walls are hidden lifts: if a section of wall lowers and becomes walkable, step onto
+  it and use "wait" - it will rise back up and carry you to a new area of the map that you
+  could not reach on foot.
 
 # ACTIONS
 
