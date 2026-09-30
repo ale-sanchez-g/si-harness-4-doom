@@ -89,7 +89,7 @@ class NavMap:
         self.features: list[Feature] = []
         self.keys: set[str] = set()  # keys the player holds (affects locked doors)
         self.failed_doors: set[int] = set()  # doors we tried and could not open
-        self.blocked_cells: set[tuple[int, int]] = set()  # places we could not reach
+        self.blocked_cells: dict[tuple[int, int], int] = {}  # cell -> tic until which it is blocked
         self._build_grid(sectors)
         self._attach_map_info(map_info)
         self.seen = np.zeros(self.shape, dtype=bool)
@@ -485,12 +485,27 @@ class NavMap:
         best = int(cand[np.argmin(score)])
         return self._reconstruct(pred, s_cell[0] * w + s_cell[1], best, dist[best], (x, y))
 
-    def mark_unreachable(self, x: float, y: float, radius_cells: int = 1) -> None:
+    def mark_unreachable(self, x: float, y: float, tic: int, radius_cells: int = 1,
+                         ttl_tics: int = 1200) -> None:
+        """Blacklist cells around (x, y) from path planning until tic + ttl_tics.
+
+        A goal that failed once may just be a transient obstruction (a monster in
+        the way, a door mid-animation): blacklisting it forever would permanently
+        wall off whatever lies beyond, so the block expires and can be retried.
+        """
         r0, c0 = self.to_cell(x, y)
+        expire = tic + ttl_tics
         for dr in range(-radius_cells, radius_cells + 1):
             for dc in range(-radius_cells, radius_cells + 1):
                 if 0 <= r0 + dr < self.shape[0] and 0 <= c0 + dc < self.shape[1]:
-                    self.blocked_cells.add((r0 + dr, c0 + dc))
+                    cell = (r0 + dr, c0 + dc)
+                    self.blocked_cells[cell] = max(expire, self.blocked_cells.get(cell, 0))
+
+    def prune_blocked(self, tic: int) -> None:
+        """Drop blacklisted cells whose block has expired, letting explore retry them."""
+        expired = [cell for cell, expire in self.blocked_cells.items() if expire <= tic]
+        for cell in expired:
+            del self.blocked_cells[cell]
 
     def mark_explored(self, x: float, y: float, radius_cells: int = 1) -> None:
         """Count a spot as seen (used when we stand next to it but cannot look at it)."""

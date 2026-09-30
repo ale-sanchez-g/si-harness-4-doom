@@ -177,5 +177,20 @@ def test_frontier_behind_a_door_and_marking():
     assert gx > 272  # behind the door, in room B
     nav.mark_explored(gx, gy, radius_cells=1)
     assert not nav.frontier_mask()[nav.to_cell(gx, gy)]
-    nav.mark_unreachable(-10_000, -10_000, radius_cells=3)
+    nav.mark_unreachable(-10_000, -10_000, tic=0, radius_cells=3)
     assert all(0 <= r < nav.shape[0] and 0 <= c < nav.shape[1] for r, c in nav.blocked_cells)
+
+
+def test_blocked_cells_expire_and_can_be_pruned():
+    """A cell blacklisted after a failed path-follow is not walled off forever:
+    once its TTL passes, prune_blocked() forgets it so explore can retry that area
+    instead of treating a one-off failure as a permanent dead end."""
+    sectors, info = two_rooms()
+    nav = NavMap(sectors, info)
+    cell = nav.to_cell(240, 128)
+    nav.mark_unreachable(240, 128, tic=100, radius_cells=0, ttl_tics=500)
+    assert cell in nav.blocked_cells
+    nav.prune_blocked(tic=300)  # still within the TTL
+    assert cell in nav.blocked_cells
+    nav.prune_blocked(tic=601)  # past 100 + 500
+    assert cell not in nav.blocked_cells

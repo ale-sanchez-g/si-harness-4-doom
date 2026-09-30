@@ -554,6 +554,7 @@ class CommandRunner:
         start_pct = nav.explored_fraction()
         end_tic = self.snap.tic + budget
         legs = stalls = 0
+        nav.prune_blocked(self.snap.tic)
         while self.snap.tic < end_tic and legs < MAX_EXPLORE_LEGS:
             path = nav.nearest_frontier(self.snap.x, self.snap.y, self.snap.angle)
             if path is None:
@@ -580,7 +581,7 @@ class CommandRunner:
             if status in ("interrupted", "failed_hard"):
                 return "interrupted" if status == "interrupted" else "failed", reason
             if status == "failed":
-                nav.mark_unreachable(*goal, radius_cells=2)
+                nav.mark_unreachable(*goal, self.snap.tic, radius_cells=2)
             if self.snap.tic == tic_before:
                 # "Reached" without moving: the spot is next to us but hidden (e.g. just
                 # behind a door). Count it as explored so we never plan it again.
