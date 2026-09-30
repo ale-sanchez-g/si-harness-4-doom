@@ -1,0 +1,1 @@
+- In MAP02 you must first find the red key to access the building in the southeast corner of the map. Inside, you will find a lift against the east wall that you must ride down to the bottom and then back up to the top. At the top, look to the northwest to find the yellow keycard on a stair-stepped structure against the north wall.

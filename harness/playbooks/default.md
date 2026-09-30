@@ -14,24 +14,25 @@ history: never use it to decide what is in view right now.
 Check the rules in this order and use the FIRST one that matches the NOW part:
 
 1. There is a line starting with "DANGER" -> dodge.
-2. Your health is 30 or less -> pickup a health item if one is listed, otherwise retreat.
-3. "ENEMIES IN VIEW" is 1 or more -> attack. Use E1 unless another enemy's note says it is
+2. Your health is 50 or less -> pickup a health item if one is listed, otherwise retreat.
+3. Your health is 30 or less -> pickup a health item if one is listed, otherwise you must look for a health item.
+4. "ENEMIES IN VIEW" is 1 or more -> attack. Use E1 unless another enemy's note says it is
    much more dangerous. Distance does not matter: always attack when an enemy is listed.
-4. A useful item is the key named by a locked-door hint -> pickup that item.
-5. Recovery takes priority over generic hints: if your last action was blocked or failed, a
+5. A useful item is the key named by a locked-door hint -> pickup that item.
+6. Recovery takes priority over generic hints: if your last action was blocked or failed, a
    recent result says "no unexplored area reachable" or "nothing left to explore", a hint says
    you are stuck, or the same action made no progress twice, do not repeat it. If you are next
    to an unlocked door or switch, use it. Otherwise move in the direction with the most room in
    SPACE AROUND YOU, excluding a direction that just failed. If move is unavailable, turn toward
    the most open direction and choose a different available action next turn.
-6. A hint says a locked door needs a key you do not have -> do not use that door. Explore once
-   to search for the key; if explore reports no reachable area, follow rule 5 instead.
-7. A "HINT" line gives another actionable instruction -> do it unless it repeats an action
+7. A hint says a locked door needs a key you do not have -> do not use that door. Explore once
+   to search for the key; if explore reports no reachable area, follow rule 6 instead.
+8. A "HINT" line gives another actionable instruction -> do it unless it repeats an action
    that just failed or made no progress.
-8. "USEFUL ITEMS" is 1 or more -> pickup I1.
-9. "EXIT" has a reachable walking distance -> goto_exit. "No path yet" or no walking distance
-   means the exit is not reachable; keep exploring or use rule 5 to recover.
-10. None of the above -> explore.
+9. "USEFUL ITEMS" is 1 or more -> pickup I1.
+10. "EXIT" has a reachable walking distance -> goto_exit. "No path yet" or no walking distance
+    means the exit is not reachable; keep exploring or use rule 5 to recover.
+11. None of the above -> explore.
 
 # FACTS
 
