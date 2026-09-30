@@ -82,9 +82,53 @@ def load_playbook(path: Path) -> Playbook:
     return Playbook.parse(path.read_text(encoding="utf-8"))
 
 
-def scenario_notes(scenario: str, playbook_dir: Path = DEFAULT_PLAYBOOK_DIR) -> str:
+_MAP_TAG = re.compile(r"^-\s*\[([A-Za-z0-9]+)\]\s*(.*)$")
+_KEY_COLOR = re.compile(r"\b(red|yellow|blue)\s+key", re.I)
+
+
+def scenario_notes(scenario: str, map_name: str | None = None,
+                   playbook_dir: Path = DEFAULT_PLAYBOOK_DIR) -> str:
+    """Scenario background for the system prompt.
+
+    A bullet written as "- [MAP02] ..." only shows up while playing that map;
+    a plain "- ..." bullet applies to every map in the scenario. This keeps a
+    MAP02-only hint from cluttering (and diluting) the prompt on MAP01, MAP03, ...
+    """
     p = playbook_dir / "scenarios" / f"{scenario}.md"
-    return p.read_text(encoding="utf-8").strip() if p.exists() else ""
+    if not p.exists():
+        return ""
+    lines = []
+    for line in p.read_text(encoding="utf-8").splitlines():
+        m = _MAP_TAG.match(line)
+        if m:
+            tag, rest = m.groups()
+            if map_name and tag.upper() != map_name.upper():
+                continue
+            lines.append(f"- {rest}")
+        else:
+            lines.append(line)
+    return "\n".join(lines).strip()
+
+
+def scenario_objective(scenario: str, map_name: str | None,
+                       playbook_dir: Path = DEFAULT_PLAYBOOK_DIR) -> str:
+    """The first map-scoped bullet that names a coloured key.
+
+    A note read once at the top of the system prompt is easy for a small model to
+    forget dozens of turns later; situation_report() re-injects this text as a
+    per-turn HINT until the matching key shows up in the player's inventory.
+    """
+    p = playbook_dir / "scenarios" / f"{scenario}.md"
+    if not p.exists() or not map_name:
+        return ""
+    for line in p.read_text(encoding="utf-8").splitlines():
+        m = _MAP_TAG.match(line)
+        if not m or m.group(1).upper() != map_name.upper():
+            continue
+        rest = m.group(2)
+        if _KEY_COLOR.search(rest):
+            return rest
+    return ""
 
 
 def system_prompt(playbook: Playbook | str, obs: dict, reasoning: bool = True,
@@ -100,7 +144,7 @@ def system_prompt(playbook: Playbook | str, obs: dict, reasoning: bool = True,
     if tips:
         goal += "\n" + "\n".join(f"- {t}" for t in tips)
     fmt = ANSWER_FORMAT if reasoning else ANSWER_FORMAT_NO_THOUGHT
-    notes = scenario_notes(ep.get("scenario", ""), playbook_dir)
+    notes = scenario_notes(ep.get("scenario", ""), ep.get("map"), playbook_dir)
     text = playbook.template
     for key, value in {"{goal}": goal, "{actions}": actions, "{answer_format}": fmt,
                        "{scenario_notes}": notes or "(none)"}.items():
@@ -122,7 +166,7 @@ def facts_line(view: TurnView, hints: list[str]) -> str:
 
 
 def situation_report(view: TurnView, memory: Memory, turn: int, history: int = 4,
-                     reminder: str = "", facts: bool = False) -> str:
+                     reminder: str = "", facts: bool = False, objective: str = "") -> str:
     obs = view.obs
     ep, p = obs["episode"], obs["player"]
     lines = [f"TURN {turn} | {ep['scenario']} {ep['map']} | game time {ep['time']}s"]
@@ -212,6 +256,11 @@ def situation_report(view: TurnView, memory: Memory, turn: int, history: int = 4
         lines.append("JUST HAPPENED: " + "; ".join(dict.fromkeys(events[-5:])))
 
     hints = memory.hints(obs)
+    if objective:
+        m = _KEY_COLOR.search(objective)
+        have_it = bool(m) and m.group(1).lower() in p.get("keys", [])
+        if not have_it:
+            hints = [objective] + hints
     for hint in hints:
         lines.append(f"HINT: {hint}")
 

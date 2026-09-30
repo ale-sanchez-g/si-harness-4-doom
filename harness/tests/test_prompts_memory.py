@@ -3,7 +3,7 @@ from conftest import enemy, item
 from doom_harness.actions import TurnView
 from doom_harness.config import HarnessConfig
 from doom_harness.memory import Memory, StepRecord
-from doom_harness.prompts import load_playbook, situation_report, system_prompt, where
+from doom_harness.prompts import load_playbook, scenario_notes, scenario_objective, situation_report, system_prompt, where
 
 
 def test_where_phrasing():
@@ -64,6 +64,26 @@ def test_danger_and_locked_doors_are_reported(make_obs):
     assert "LOCKED, you need the blue key" in text
     assert "HINT: A projectile is flying at you: dodge!" in text
     assert "HINT: A blue door is locked" in text
+
+
+def test_scenario_notes_and_objective_are_map_scoped():
+    """A "- [MAP02] ..." bullet only shows up on MAP02, not on other maps, and it
+    is the objective repeated as a per-turn HINT until the key is picked up."""
+    assert scenario_notes("freedoom2", "MAP01") == ""
+    notes = scenario_notes("freedoom2", "MAP02")
+    assert "red keycard" in notes and "[MAP02]" not in notes
+    assert scenario_objective("freedoom2", "MAP01") == ""
+    assert "red keycard" in scenario_objective("freedoom2", "MAP02")
+
+
+def test_objective_hint_repeats_until_key_is_held(make_obs):
+    objective = scenario_objective("freedoom2", "MAP02")
+    obs = make_obs(episode={"map": "MAP02"}, player={"keys": []})
+    text = situation_report(TurnView(obs), Memory(), 1, objective=objective)
+    assert f"HINT: {objective}" in text
+    obs = make_obs(episode={"map": "MAP02"}, player={"keys": ["red"]})
+    text = situation_report(TurnView(obs), Memory(), 1, objective=objective)
+    assert objective not in text
 
 
 def test_memory_detects_stuck_and_repeats(make_obs):

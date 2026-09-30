@@ -12,7 +12,7 @@ from .config import HarnessConfig
 from .llm import LLM
 from .memory import Memory, StepRecord
 from .policies import Decision, LLMPolicy, ScriptedPolicy
-from .prompts import load_playbook, system_prompt
+from .prompts import load_playbook, scenario_objective, system_prompt
 from .recorder import RunRecorder
 from .telemetry import Tracer
 
@@ -40,9 +40,10 @@ class Agent:
         if self.recorder is not None and self.cfg.save_prompts:
             name = f"system_prompt_{obs['episode']['scenario']}.md"
             (self.recorder.dir / name).write_text(prompt, encoding="utf-8")
+        objective = scenario_objective(obs["episode"].get("scenario", ""), obs["episode"].get("map"))
         return LLMPolicy(self.llm, prompt, reasoning=self.cfg.reasoning, history=self.cfg.history,
                          attack_seconds=self.cfg.attack_seconds, explore_seconds=self.cfg.explore_seconds,
-                         reminder=self.playbook.reminder, facts=self.playbook.facts)
+                         reminder=self.playbook.reminder, facts=self.playbook.facts, objective=objective)
 
     # ------------------------------------------------------------------ run
     def run(self) -> list[dict]:

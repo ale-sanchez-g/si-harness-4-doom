@@ -84,11 +84,12 @@ class LLMPolicy:
 
     def __init__(self, llm: LLM, system_prompt: str, reasoning: bool = True, history: int = 4,
                  attack_seconds: float = 2.0, explore_seconds: float = 5.0, retries: int = 1,
-                 reminder: str = "", facts: bool = False):
+                 reminder: str = "", facts: bool = False, objective: str = ""):
         self.llm = llm
         self.system_prompt = system_prompt
         self.reminder = reminder
         self.facts = facts
+        self.objective = objective
         self.reasoning = reasoning
         self.history = history
         self.attack_seconds = attack_seconds
@@ -97,7 +98,7 @@ class LLMPolicy:
         self.fallback = ScriptedPolicy()
 
     def decide(self, view: TurnView, memory: Memory, turn: int = 0, **_) -> Decision:
-        user = situation_report(view, memory, turn, self.history, self.reminder, self.facts)
+        user = situation_report(view, memory, turn, self.history, self.reminder, self.facts, self.objective)
         messages = [{"role": "system", "content": self.system_prompt}, {"role": "user", "content": user}]
         schema = view.schema(self.reasoning)
         errors: list[str] = []
